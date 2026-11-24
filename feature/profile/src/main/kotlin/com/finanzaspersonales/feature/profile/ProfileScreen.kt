@@ -1,44 +1,79 @@
 package com.finanzaspersonales.feature.profile
 
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.filled.KeyboardArrowRight
 import androidx.compose.material.icons.outlined.AccountBalance
 import androidx.compose.material.icons.outlined.BarChart
 import androidx.compose.material.icons.outlined.CalendarMonth
+import androidx.compose.material.icons.outlined.Category
 import androidx.compose.material.icons.outlined.CreditCard
+import androidx.compose.material.icons.outlined.Lock
 import androidx.compose.material.icons.outlined.Savings
-import androidx.compose.material.icons.outlined.Settings
 import androidx.compose.material.icons.outlined.Shield
 import androidx.compose.material3.Icon
 import androidx.compose.material3.ListItem
 import androidx.compose.material3.Text
+import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.padding
+import androidx.compose.material3.MaterialTheme
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.remember
+import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.text.style.TextAlign
+import androidx.compose.ui.unit.dp
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.vector.ImageVector
 
-private data class Section(val title: String, val phase: String, val icon: ImageVector)
-
-private val sections = listOf(
-    Section("Cuentas", "Fase 3", Icons.Outlined.AccountBalance),
-    Section("Deudas", "Fase 6", Icons.Outlined.CreditCard),
-    Section("Ahorros", "Fase 6", Icons.Outlined.Savings),
-    Section("Fondo de emergencia", "Fase 6", Icons.Outlined.Shield),
-    Section("Calendario", "Fase 6", Icons.Outlined.CalendarMonth),
-    Section("Estadísticas", "Fase 3", Icons.Outlined.BarChart),
-    Section("Configuración", "Fase 3", Icons.Outlined.Settings),
+private data class Section(
+    val title: String,
+    val icon: ImageVector,
+    val subtitle: String,
+    val onClick: (() -> Unit)? = null,
 )
 
-/** Menú secundario. Cada sección indica en qué fase se construye. */
+/** Menú secundario. Las secciones aún no construidas indican en qué fase llegan. */
 @Composable
-fun ProfileRoute() {
+fun ProfileRoute(
+    onAccounts: () -> Unit,
+    onCategories: () -> Unit,
+    onSecurity: () -> Unit,
+) {
+    val sections = listOf(
+        Section("Cuentas", Icons.Outlined.AccountBalance, "Saldos, conciliación e historial por cuenta", onAccounts),
+        Section("Categorías", Icons.Outlined.Category, "Crear categorías y subcategorías propias", onCategories),
+        Section("Seguridad", Icons.Outlined.Lock, "PIN, huella y bloqueo automático", onSecurity),
+        Section("Deudas", Icons.Outlined.CreditCard, "Llega en la Fase 6"),
+        Section("Ahorros", Icons.Outlined.Savings, "Llega en la Fase 6"),
+        Section("Fondo de emergencia", Icons.Outlined.Shield, "Llega en la Fase 6"),
+        Section("Calendario", Icons.Outlined.CalendarMonth, "Llega en la Fase 6"),
+        Section("Estadísticas", Icons.Outlined.BarChart, "Llega en la Fase 7"),
+    )
+    val context = LocalContext.current
+    // Versión instalada, para confirmar que se actualizó al APK correcto.
+    val version = remember {
+        runCatching { context.packageManager.getPackageInfo(context.packageName, 0).versionName }.getOrNull() ?: "?"
+    }
     LazyColumn(Modifier.fillMaxSize()) {
         items(sections) { s ->
             ListItem(
+                modifier = if (s.onClick != null) Modifier.clickable(onClick = s.onClick) else Modifier,
                 headlineContent = { Text(s.title) },
-                supportingContent = { Text("Llega en la ${s.phase}") },
+                supportingContent = { Text(s.subtitle) },
                 leadingContent = { Icon(s.icon, contentDescription = null) },
+                trailingContent = if (s.onClick != null) ({ Icon(Icons.AutoMirrored.Filled.KeyboardArrowRight, null) }) else null,
+            )
+        }
+        item {
+            Text(
+                "Versión $version",
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                textAlign = TextAlign.Center,
+                modifier = Modifier.fillMaxWidth().padding(24.dp),
             )
         }
     }

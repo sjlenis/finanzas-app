@@ -16,8 +16,93 @@ data class PeriodTotals(
     @ColumnInfo(name = "expense_centavos") val expenseCentavos: Long,
 )
 
+/** Movimiento con los nombres de su cuenta y categoría (para listas). */
+data class TransactionRow(
+    @androidx.room.Embedded val transaction: TransactionEntity,
+    @ColumnInfo(name = "account_name") val accountName: String,
+    @ColumnInfo(name = "category_name") val categoryName: String?,
+)
+
+/** Totales de una cuenta en un rango. */
+data class AccountActivityRow(
+    @ColumnInfo(name = "income_centavos") val incomeCentavos: Long,
+    @ColumnInfo(name = "expense_centavos") val expenseCentavos: Long,
+    @ColumnInfo(name = "transfers_in_centavos") val transfersInCentavos: Long,
+    @ColumnInfo(name = "transfers_out_centavos") val transfersOutCentavos: Long,
+)
+
+/** Gasto neto por categoría principal (las subcategorías suman en su categoría padre). */
+data class CategorySpendingRow(
+    @ColumnInfo(name = "category_id") val categoryId: Long?,
+    @ColumnInfo(name = "category_name") val categoryName: String?,
+    @ColumnInfo(name = "amount_centavos") val amountCentavos: Long,
+)
+
 @Dao
 interface TransactionDao {
+
+    @androidx.room.Update
+    suspend fun update(transaction: TransactionEntity)
+
+    @Query("DELETE FROM transactions WHERE id = :id")
+    suspend fun deleteById(id: Long)
+
+    @Query("DELETE FROM transfers WHERE id = :transferId")
+    suspend fun deleteTransferById(transferId: Long)
+
+    @Query("SELECT * FROM transactions WHERE id = :id")
+    suspend fun getById(id: Long): TransactionEntity?
+
+    @Query("SELECT * FROM transfers WHERE id = :id")
+    suspend fun getTransfer(id: Long): TransferEntity?
+
+    /**
+     * Historial filtrado. Los filtros null no se aplican. Si se filtra por categoría
+     * principal, también trae sus subcategorías.
+     */
+    @Query(
+        """
+        SELECT t.*, a.name AS account_name, c.name AS category_name
+        FROM transactions t
+        JOIN accounts a ON a.id = t.account_id
+        LEFT JOIN categories c ON c.id = t.category_id
+        WHERE t.occurred_at >= :fromEpochMs AND t.occurred_at < :toEpochMs
+          AND (:accountId IS NULL OR t.account_id = :accountId)
+          AND (:categoryId IS NULL OR t.category_id = :categoryId OR c.parent_id = :categoryId)
+        ORDER BY t.occurred_at DESC, t.id DESC
+        """,
+    )
+    fun observeFiltered(fromEpochMs: Long, toEpochMs: Long, accountId: Long?, categoryId: Long?): Flow<List<TransactionRow>>
+
+    @Query(
+        """
+        SELECT
+          COALESCE(SUM(CASE WHEN kind = 'INCOME' THEN amount_centavos ELSE 0 END), 0) AS income_centavos,
+          COALESCE(SUM(CASE WHEN kind IN ('EXPENSE', 'FEE', 'REFUND') THEN -amount_centavos ELSE 0 END), 0) AS expense_centavos,
+          COALESCE(SUM(CASE WHEN kind = 'TRANSFER' AND amount_centavos > 0 THEN amount_centavos ELSE 0 END), 0) AS transfers_in_centavos,
+          COALESCE(SUM(CASE WHEN kind = 'TRANSFER' AND amount_centavos < 0 THEN -amount_centavos ELSE 0 END), 0) AS transfers_out_centavos
+        FROM transactions
+        WHERE status = 'CONFIRMED' AND account_id = :accountId
+          AND occurred_at >= :fromEpochMs AND occurred_at < :toEpochMs
+        """,
+    )
+    fun observeAccountActivity(accountId: Long, fromEpochMs: Long, toEpochMs: Long): Flow<AccountActivityRow>
+
+    @Query(
+        """
+        SELECT COALESCE(p.id, c.id) AS category_id, COALESCE(p.name, c.name) AS category_name,
+               SUM(-t.amount_centavos) AS amount_centavos
+        FROM transactions t
+        LEFT JOIN categories c ON c.id = t.category_id
+        LEFT JOIN categories p ON p.id = c.parent_id
+        WHERE t.status = 'CONFIRMED' AND t.kind IN ('EXPENSE', 'FEE', 'REFUND')
+          AND t.occurred_at >= :fromEpochMs AND t.occurred_at < :toEpochMs
+        GROUP BY COALESCE(p.id, c.id)
+        HAVING SUM(-t.amount_centavos) > 0
+        ORDER BY amount_centavos DESC
+        """,
+    )
+    fun observeSpendingByCategory(fromEpochMs: Long, toEpochMs: Long): Flow<List<CategorySpendingRow>>
 
     @Insert
     suspend fun insert(transaction: TransactionEntity): Long

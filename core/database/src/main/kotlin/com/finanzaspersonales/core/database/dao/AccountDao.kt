@@ -40,6 +40,43 @@ interface AccountDao {
     )
     fun observeActiveWithBalance(): Flow<List<AccountWithBalance>>
 
+    /** Todas las cuentas, incluidas las archivadas, con su saldo. */
+    @Query(
+        """
+        SELECT a.*, a.initial_balance_centavos + COALESCE(SUM(t.amount_centavos), 0) AS balance_centavos
+        FROM accounts a
+        LEFT JOIN transactions t ON t.account_id = a.id AND t.status = 'CONFIRMED'
+        GROUP BY a.id
+        ORDER BY a.is_archived, a.sort_order, a.id
+        """,
+    )
+    fun observeAllWithBalance(): Flow<List<AccountWithBalance>>
+
+    @Query(
+        """
+        SELECT a.*, a.initial_balance_centavos + COALESCE(SUM(t.amount_centavos), 0) AS balance_centavos
+        FROM accounts a
+        LEFT JOIN transactions t ON t.account_id = a.id AND t.status = 'CONFIRMED'
+        WHERE a.id = :id
+        GROUP BY a.id
+        """,
+    )
+    fun observeWithBalance(id: Long): Flow<AccountWithBalance?>
+
+    @Query(
+        """
+        SELECT a.initial_balance_centavos + COALESCE(SUM(t.amount_centavos), 0)
+        FROM accounts a
+        LEFT JOIN transactions t ON t.account_id = a.id AND t.status = 'CONFIRMED'
+        WHERE a.id = :id
+        GROUP BY a.id
+        """,
+    )
+    suspend fun balanceOf(id: Long): Long?
+
+    @Query("SELECT COALESCE(MAX(sort_order), -1) + 1 FROM accounts")
+    suspend fun nextSortOrder(): Int
+
     @Query("SELECT * FROM accounts WHERE id = :id")
     suspend fun getById(id: Long): AccountEntity?
 }

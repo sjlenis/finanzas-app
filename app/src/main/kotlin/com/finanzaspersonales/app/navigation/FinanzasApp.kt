@@ -36,6 +36,24 @@ import com.finanzaspersonales.feature.budgets.BudgetsRoute
 import com.finanzaspersonales.feature.dashboard.DashboardRoute
 import com.finanzaspersonales.feature.profile.ProfileRoute
 import com.finanzaspersonales.feature.transactions.TransactionsRoute
+import com.finanzaspersonales.feature.transactions.EntryEditorRoute
+import com.finanzaspersonales.feature.transactions.CategoriesRoute
+import com.finanzaspersonales.feature.accounts.AccountsRoute
+import com.finanzaspersonales.feature.accounts.AccountDetailRoute
+import com.finanzaspersonales.feature.settings.SecuritySettingsRoute
+import androidx.navigation.NavType
+import androidx.navigation.navArgument
+
+/** Rutas secundarias (pantallas completas, sin barra inferior). */
+object Routes {
+    const val ENTRY = "movimiento?id={id}"
+    fun entry(id: Long? = null) = if (id == null) "movimiento" else "movimiento?id=$id"
+    const val CATEGORIES = "categorias"
+    const val ACCOUNTS = "cuentas"
+    const val ACCOUNT = "cuenta/{accountId}"
+    fun account(id: Long) = "cuenta/$id"
+    const val SECURITY = "seguridad"
+}
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -43,17 +61,20 @@ fun FinanzasApp() {
     val navController = rememberNavController()
     val backStackEntry by navController.currentBackStackEntryAsState()
     val currentRoute = backStackEntry?.destination?.hierarchy?.firstOrNull()?.route
-    val current = TopLevelDestination.entries.firstOrNull { it.route == currentRoute } ?: TopLevelDestination.HOME
+    val current = TopLevelDestination.entries.firstOrNull { it.route == currentRoute }
 
     Scaffold(
-        topBar = { CenterAlignedTopAppBar(title = { Text(current.label) }) },
+        // Las pantallas secundarias tienen su propia barra superior y no muestran la inferior.
+        topBar = { if (current != null) CenterAlignedTopAppBar(title = { Text(current.label) }) },
         bottomBar = {
-            FinanzasBottomBar(current = current) { destination ->
-                navController.navigate(destination.route) {
-                    // Navegación estándar de pestañas: no apila pantallas y conserva su estado.
-                    popUpTo(navController.graph.findStartDestination().id) { saveState = true }
-                    launchSingleTop = true
-                    restoreState = true
+            if (current != null) {
+                FinanzasBottomBar(current = current) { destination ->
+                    navController.navigate(destination.route) {
+                        // Navegación estándar de pestañas: no apila pantallas y conserva su estado.
+                        popUpTo(navController.graph.findStartDestination().id) { saveState = true }
+                        launchSingleTop = true
+                        restoreState = true
+                    }
                 }
             }
         },
@@ -61,13 +82,41 @@ fun FinanzasApp() {
         NavHost(
             navController = navController,
             startDestination = TopLevelDestination.HOME.route,
-            modifier = Modifier.padding(padding),
+            // Las pantallas secundarias manejan sus propios márgenes con su Scaffold.
+            modifier = if (current != null) Modifier.padding(padding) else Modifier,
         ) {
-            composable(TopLevelDestination.HOME.route) { DashboardRoute() }
-            composable(TopLevelDestination.TRANSACTIONS.route) { TransactionsRoute() }
+            val back: () -> Unit = { navController.popBackStack() }
+            val openEntry: (Long) -> Unit = { navController.navigate(Routes.entry(it)) }
+            composable(TopLevelDestination.HOME.route) {
+                DashboardRoute(
+                    onOpenAccount = { navController.navigate(Routes.account(it)) },
+                    onOpenSecurity = { navController.navigate(Routes.SECURITY) },
+                )
+            }
+            composable(TopLevelDestination.TRANSACTIONS.route) {
+                TransactionsRoute(onAdd = { navController.navigate(Routes.entry()) }, onOpen = openEntry)
+            }
             composable(TopLevelDestination.ASSISTANT.route) { AssistantRoute() }
             composable(TopLevelDestination.BUDGETS.route) { BudgetsRoute() }
-            composable(TopLevelDestination.PROFILE.route) { ProfileRoute() }
+            composable(TopLevelDestination.PROFILE.route) {
+                ProfileRoute(
+                    onAccounts = { navController.navigate(Routes.ACCOUNTS) },
+                    onCategories = { navController.navigate(Routes.CATEGORIES) },
+                    onSecurity = { navController.navigate(Routes.SECURITY) },
+                )
+            }
+            composable(
+                Routes.ENTRY,
+                arguments = listOf(navArgument("id") { type = NavType.LongType; defaultValue = -1L }),
+            ) { EntryEditorRoute(onDone = back) }
+            composable(Routes.CATEGORIES) { CategoriesRoute(onBack = back) }
+            composable(Routes.ACCOUNTS) {
+                AccountsRoute(onBack = back, onOpen = { navController.navigate(Routes.account(it)) })
+            }
+            composable(Routes.ACCOUNT, arguments = listOf(navArgument("accountId") { type = NavType.LongType })) {
+                AccountDetailRoute(onBack = back, onOpenTransaction = openEntry)
+            }
+            composable(Routes.SECURITY) { SecuritySettingsRoute(onBack = back) }
         }
     }
 }

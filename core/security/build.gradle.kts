@@ -26,6 +26,9 @@ kotlin {
 
 dependencies {
     implementation(libs.hilt.android)
+    implementation(libs.datastore.preferences)
+    api(libs.kotlinx.coroutines.core)
     ksp(libs.hilt.compiler)
     testImplementation(libs.junit)
+    testImplementation(libs.kotlinx.coroutines.test)
 }

@@ -33,3 +33,11 @@ object BogotaTime {
 data class ClosedOpenRange(val start: Instant, val endExclusive: Instant) {
     operator fun contains(instant: Instant): Boolean = instant >= start && instant < endExclusive
 }
+
+/**
+ * Instante que se guarda cuando el usuario elige solo una fecha: si es hoy, la hora
+ * actual; si es otro día, el mediodía de ese día en Colombia (evita que un cambio de
+ * zona lo mueva al día anterior o siguiente).
+ */
+fun BogotaTime.instantForDate(date: java.time.LocalDate, clock: Clock): Instant =
+    if (date == today(clock)) clock.instant() else date.atTime(12, 0).atZone(ZONE).toInstant()
