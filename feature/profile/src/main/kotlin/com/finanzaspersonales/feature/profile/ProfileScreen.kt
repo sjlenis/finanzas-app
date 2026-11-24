@@ -17,7 +17,14 @@ import androidx.compose.material.icons.outlined.Shield
 import androidx.compose.material3.Icon
 import androidx.compose.material3.ListItem
 import androidx.compose.material3.Text
+import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.padding
+import androidx.compose.material3.MaterialTheme
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.remember
+import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.text.style.TextAlign
+import androidx.compose.ui.unit.dp
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.vector.ImageVector
 
@@ -45,6 +52,11 @@ fun ProfileRoute(
         Section("Calendario", Icons.Outlined.CalendarMonth, "Llega en la Fase 6"),
         Section("Estadísticas", Icons.Outlined.BarChart, "Llega en la Fase 7"),
     )
+    val context = LocalContext.current
+    // Versión instalada, para confirmar que se actualizó al APK correcto.
+    val version = remember {
+        runCatching { context.packageManager.getPackageInfo(context.packageName, 0).versionName }.getOrNull() ?: "?"
+    }
     LazyColumn(Modifier.fillMaxSize()) {
         items(sections) { s ->
             ListItem(
@@ -53,6 +65,15 @@ fun ProfileRoute(
                 supportingContent = { Text(s.subtitle) },
                 leadingContent = { Icon(s.icon, contentDescription = null) },
                 trailingContent = if (s.onClick != null) ({ Icon(Icons.AutoMirrored.Filled.KeyboardArrowRight, null) }) else null,
+            )
+        }
+        item {
+            Text(
+                "Versión $version",
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                textAlign = TextAlign.Center,
+                modifier = Modifier.fillMaxWidth().padding(24.dp),
             )
         }
     }
