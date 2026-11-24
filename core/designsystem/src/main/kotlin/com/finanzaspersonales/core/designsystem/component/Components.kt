@@ -38,18 +38,32 @@ fun FinanceCard(
     }
 }
 
-/** Monto en COP. Con [signed] colorea ingresos en verde y gastos en rojo. */
+/** Color con el que se muestra un monto. */
+enum class MoneyTone {
+    /** Color de texto normal (saldos). */
+    Neutral,
+    /** Siempre verde: totales de ingresos. */
+    Income,
+    /** Siempre rojo: totales de gastos, aunque sean $0. */
+    Expense,
+    /** Verde si es positivo o cero, rojo si es negativo (movimientos individuales). */
+    Signed,
+}
+
+/** Monto en COP con el color indicado por [tone]. */
 @Composable
 fun MoneyText(
     money: Money,
     modifier: Modifier = Modifier,
     style: TextStyle = AmountMedium,
-    signed: Boolean = false,
+    tone: MoneyTone = MoneyTone.Neutral,
 ) {
-    val color = when {
-        !signed -> MaterialTheme.colorScheme.onSurface
-        money.isNegative -> LocalFinanceColors.current.expense
-        else -> LocalFinanceColors.current.income
+    val colors = LocalFinanceColors.current
+    val color = when (tone) {
+        MoneyTone.Neutral -> MaterialTheme.colorScheme.onSurface
+        MoneyTone.Income -> colors.income
+        MoneyTone.Expense -> colors.expense
+        MoneyTone.Signed -> if (money.isNegative) colors.expense else colors.income
     }
     Text(money.formatCop(), modifier = modifier, style = style, color = color)
 }

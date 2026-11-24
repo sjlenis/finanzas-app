@@ -22,6 +22,7 @@ import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.finanzaspersonales.core.designsystem.component.FinanceCard
 import com.finanzaspersonales.core.designsystem.component.MoneyText
+import com.finanzaspersonales.core.designsystem.component.MoneyTone
 import com.finanzaspersonales.core.designsystem.theme.AmountLarge
 import com.finanzaspersonales.core.model.Money
 
@@ -61,11 +62,11 @@ fun DashboardScreen(state: DashboardUiState) {
                 Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
                     Column {
                         Text("Ingresos", style = MaterialTheme.typography.labelLarge)
-                        MoneyText(state.month.income, signed = true)
+                        MoneyText(state.month.income, tone = MoneyTone.Income)
                     }
                     Column(horizontalAlignment = Alignment.End) {
                         Text("Gastos", style = MaterialTheme.typography.labelLarge)
-                        MoneyText(-state.month.expense, signed = true)
+                        MoneyText(state.month.expense, tone = MoneyTone.Expense)
                     }
                 }
             }
