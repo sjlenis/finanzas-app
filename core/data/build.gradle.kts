@@ -14,6 +14,7 @@ android {
         version = release(37) { minorApiLevel = 1 }
     }
     defaultConfig { minSdk = 29 }
+    testOptions { unitTests.isIncludeAndroidResources = true }
     compileOptions {
         sourceCompatibility = JavaVersion.VERSION_17
         targetCompatibility = JavaVersion.VERSION_17
@@ -27,7 +28,12 @@ kotlin {
 dependencies {
     api(project(":core:model"))
     api(project(":core:common"))
-    implementation(project(":core:database"))
+    api(project(":core:database"))
     implementation(libs.hilt.android)
     ksp(libs.hilt.compiler)
+
+    testImplementation(libs.junit)
+    testImplementation(libs.robolectric)
+    testImplementation(libs.androidx.test.core)
+    testImplementation(libs.kotlinx.coroutines.test)
 }

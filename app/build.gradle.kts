@@ -55,6 +55,9 @@ dependencies {
     implementation(project(":feature:assistant"))
     implementation(project(":feature:budgets"))
     implementation(project(":feature:profile"))
+    implementation(project(":feature:accounts"))
+    implementation(project(":feature:settings"))
+    implementation(libs.biometric)
 
     implementation(libs.androidx.core.ktx)
     implementation(libs.androidx.activity.compose)
