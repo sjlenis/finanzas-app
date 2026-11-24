@@ -1,6 +1,9 @@
 package com.finanzaspersonales.core.designsystem.component
 
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.layout.Box
+import androidx.compose.material.icons.filled.ArrowDropDown
+import androidx.compose.material3.DropdownMenu
 import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.text.KeyboardOptions
@@ -10,9 +13,6 @@ import androidx.compose.material3.DatePicker
 import androidx.compose.material3.DatePickerDialog
 import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.ExperimentalMaterial3Api
-import androidx.compose.material3.ExposedDropdownMenuAnchorType
-import androidx.compose.material3.ExposedDropdownMenuBox
-import androidx.compose.material3.ExposedDropdownMenuDefaults
 import androidx.compose.material3.Icon
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Text
@@ -159,8 +159,10 @@ fun DateField(
 /** Opción de una lista desplegable. */
 data class Choice<T>(val value: T, val label: String)
 
-/** Lista desplegable de solo lectura. */
-@OptIn(ExperimentalMaterial3Api::class)
+/**
+ * Lista desplegable de solo lectura: un campo que al tocarlo abre un menú.
+ * Se usa un DropdownMenu simple para no depender de APIs experimentales.
+ */
 @Composable
 fun <T> ChoiceField(
     label: String,
@@ -172,7 +174,7 @@ fun <T> ChoiceField(
     isError: Boolean = false,
 ) {
     var expanded by remember { mutableStateOf(false) }
-    ExposedDropdownMenuBox(expanded = expanded, onExpandedChange = { expanded = it }, modifier = modifier) {
+    Box(modifier.fillMaxWidth()) {
         OutlinedTextField(
             value = choices.firstOrNull { it.value == selected }?.label ?: "",
             onValueChange = {},
@@ -180,12 +182,16 @@ fun <T> ChoiceField(
             label = { Text(label) },
             placeholder = { Text(placeholder) },
             isError = isError,
-            trailingIcon = { ExposedDropdownMenuDefaults.TrailingIcon(expanded = expanded) },
-            modifier = Modifier
-                .fillMaxWidth()
-                .menuAnchor(ExposedDropdownMenuAnchorType.PrimaryNotEditable),
+            trailingIcon = { Icon(Icons.Filled.ArrowDropDown, contentDescription = null) },
+            modifier = Modifier.fillMaxWidth(),
         )
-        ExposedDropdownMenu(expanded = expanded, onDismissRequest = { expanded = false }) {
+        // Capa transparente encima del campo: el campo de solo lectura no recibe toques por sí solo.
+        Box(
+            Modifier
+                .matchParentSize()
+                .clickable(interactionSource = remember { MutableInteractionSource() }, indication = null) { expanded = true },
+        )
+        DropdownMenu(expanded = expanded, onDismissRequest = { expanded = false }) {
             choices.forEach { choice ->
                 DropdownMenuItem(
                     text = { Text(choice.label) },
