@@ -25,6 +25,16 @@ jobs:
       - name: Pruebas unitarias
         run: ./gradlew test --stacktrace
 
+      - name: Revisar esquema exportado de la base de datos
+        run: |
+          # Room exporta el esquema al compilar; si cambió y no está en git, se muestra aquí para versionarlo.
+          changes=$(git status --porcelain core/database/schemas)
+          if [ -n "$changes" ]; then
+            echo "::warning::Esquema de base de datos sin versionar"
+            echo "$changes"
+            for f in $(git ls-files --others --modified core/database/schemas); do echo "=== $f"; cat "$f"; done
+          fi
+
       - name: Compilar APK de depuración
         run: ./gradlew :app:assembleDebug --stacktrace
 

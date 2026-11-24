@@ -8,9 +8,9 @@ Sin servidores, sin cuentas en la nube y con mantenimiento de $0.
 | Fase | Contenido | Estado |
 | --- | --- | --- |
 | 1 | Análisis y arquitectura | Hecha |
-| 2 | Proyecto Android, tema, navegación, Room cifrado | En revisión |
-| 3 | Cuentas, movimientos, categorías, transferencias, dashboard | Pendiente |
-| 4 | Asistente financiero (chat) | Pendiente |
+| 2 | Proyecto Android, tema, navegación, Room cifrado | Hecha |
+| 3 | Cuentas, movimientos, categorías, transferencias, dashboard | Hecha |
+| 4 | Asistente financiero (chat, intérprete local sin internet) | En revisión |
 | 5 | Detección de notificaciones Nequi / Bancolombia | Pendiente |
 | 6 | Presupuestos, deudas, fondo de emergencia, metas, calendario | Pendiente |
 | 7 | Recomendaciones e inteligencia financiera | Pendiente |

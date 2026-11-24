@@ -177,4 +177,31 @@ class MessageParserTest {
     }
 
     @Test fun ayuda() = assertEquals(ParseResult.Help, parser.parse("Hola", context))
+
+    @Test fun atajoCorto() {
+        val d = entry("Almuerzo 15000")
+        assertEquals(Money.ofPesos(15_000), d.amount)
+        assertEquals("Almuerzo", d.description)
+        assertEquals("Alimentación", d.categoryName)
+        assertEquals(DraftKind.EXPENSE, d.kind)
+    }
+
+    @Test fun atajoCafe() {
+        val d = entry("Café 5 mil")
+        assertEquals(Money.ofPesos(5_000), d.amount)
+        assertEquals("Café", d.description)
+    }
+
+    @Test fun respuestaDeSoloValor() {
+        assertEquals(Money.ofPesos(15_000), parser.parseAmountReply("15.000"))
+        assertEquals(Money.ofPesos(20_000), parser.parseAmountReply("fueron 20 mil"))
+        assertEquals(Money.ofPesos(8_500), parser.parseAmountReply("$8.500 pesos"))
+        assertEquals(null, parser.parseAmountReply("gasté 15.000 en almuerzo"))
+        assertEquals(null, parser.parseAmountReply("¿cuánto he gastado hoy?"))
+    }
+
+    @Test fun cuantoLlevoEsteMes() =
+        assertEquals(FinanceQuery.Spent(com.finanzaspersonales.core.common.Period.MONTH, null), query("¿Cuánto llevo este mes?"))
+
+    @Test fun compraSinPreposicion() = assertEquals("Mercado", entry("Compré un mercado").description)
 }

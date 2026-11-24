@@ -41,7 +41,8 @@ class MessageParser {
         // Se quita la fecha antes de buscar el valor para que "el 15" no se lea como $15.
         val withoutDate = date.range?.let { text.replaceRange(it, " ").replace(Regex("\\s+"), " ") } ?: text
         val amount = AmountExtractor.find(withoutDate)
-        val kind = detectKind(text) ?: if (amount != null) DraftKind.EXPENSE else null
+        val explicitKind = detectKind(text)
+        val kind = explicitKind ?: if (amount != null) DraftKind.EXPENSE else null
             ?: return ParseResult.NotUnderstood(
                 "No encontré un valor ni una pregunta. Prueba con \"Gasté 15.000 en almuerzo\" o \"¿Cuánto he gastado hoy?\".",
             )
@@ -49,7 +50,12 @@ class MessageParser {
         val category = CategoryGuesser.guess(text, kind, context.categoryNames)
         val counterparty = if (kind == DraftKind.LOAN_GIVEN || kind == DraftKind.LOAN_RECEIVED) findCounterparty(text) else null
         val withoutAmount = amount?.let { withoutDate.replaceRange(it.range, " ") } ?: withoutDate
-        val description = findDescription(withoutAmount, context.accountNames)?.let { restoreAccents(it, display).capitalizeFirst() }
+        val description = (
+            findDescription(withoutAmount, context.accountNames)
+                // Atajos y frases sin preposición ("Almuerzo 15000", "compré un mercado").
+                ?: if (explicitKind == null || kind == DraftKind.EXPENSE || kind == DraftKind.INCOME) looseDescription(withoutAmount, context.accountNames) else null
+            )
+            ?.let { restoreAccents(it, display).capitalizeFirst() }
             ?: counterparty?.let { if (kind == DraftKind.LOAN_GIVEN) "Préstamo a $it".capitalizeFirst() else "Préstamo de $it".capitalizeFirst() }
             ?: category
             ?: kind.label
@@ -109,6 +115,34 @@ class MessageParser {
             return phrase.split(' ').take(5).joinToString(" ")
         }
         return null
+    }
+
+    private val looseStopWords = setOf(
+        "gaste", "pague", "compre", "me", "costo", "di", "invite", "recibi", "pagaron", "pago", "gane", "cobre", "vendi", "llego",
+        "consignaron", "giraron", "transfirieron", "tanquee", "meti", "almorce", "desayune", "ingreso", "ingresaron", "hoy", "ayer", "antier",
+        "pesos", "mil", "con", "y", "en", "de", "el", "la", "los", "las", "un", "una", "por", "para", "efectivo", "plata", "fue", "fueron",
+        "son", "lucas", "palos", "millon", "millones", "k", "valor", "total",
+    )
+
+    /** Para mensajes cortos sin preposición: "almuerzo 15000" -> "almuerzo". */
+    private fun looseDescription(text: String, accounts: List<String>): String? {
+        val accountWords = accounts.flatMap { normalize(it).split(' ') }.toSet()
+        val words = text.split(' ').filter { it.isNotBlank() }
+        if (words.any { w -> w.any { it.isDigit() } }) return null
+        val kept = words.filter { it !in looseStopWords && it !in accountWords && it.length >= 3 }
+        return kept.takeIf { it.isNotEmpty() && it.size <= 4 }?.joinToString(" ")
+    }
+
+    /**
+     * Respuesta a "¿Cuánto fue?": devuelve el valor si el mensaje es solo un valor
+     * ("15.000", "fueron 20 mil", "$8.500 pesos"). Si dice algo más, devuelve null.
+     */
+    fun parseAmountReply(message: String): com.finanzaspersonales.core.model.Money? {
+        val text = normalize(message)
+        val found = AmountExtractor.find(text) ?: return null
+        val rest = text.replaceRange(found.range, " ").split(' ').filter { it.isNotBlank() }
+        val filler = setOf("fue", "fueron", "son", "eran", "era", "pesos", "de", "como", "unos", "unas", "total", "valor", "el", "por", "en")
+        return found.money.takeIf { rest.all { it in filler } && it.centavos > 0 }
     }
 
     // ---------------------------------------------------------------- consultas

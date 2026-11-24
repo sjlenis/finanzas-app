@@ -6,6 +6,7 @@ import androidx.room.RoomDatabase
 import androidx.sqlite.db.SupportSQLiteDatabase
 import com.finanzaspersonales.core.database.DefaultData
 import com.finanzaspersonales.core.database.FinanzasDatabase
+import com.finanzaspersonales.core.database.Migrations
 import com.finanzaspersonales.core.database.dao.AccountDao
 import com.finanzaspersonales.core.database.dao.CategoryDao
 import com.finanzaspersonales.core.database.dao.TransactionDao
@@ -33,6 +34,7 @@ object DatabaseModule {
         val factory = SupportOpenHelperFactory(keyProvider.getOrCreatePassphrase())
         return Room.databaseBuilder(context, FinanzasDatabase::class.java, FinanzasDatabase.FILE_NAME)
             .openHelperFactory(factory)
+            .addMigrations(*Migrations.ALL)
             .addCallback(object : RoomDatabase.Callback() {
                 override fun onCreate(db: SupportSQLiteDatabase) {
                     DefaultData.insertInto(db, System.currentTimeMillis())
