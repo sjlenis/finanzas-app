@@ -8,7 +8,10 @@ plugins {
 
 android {
     namespace = "com.finanzaspersonales.core.designsystem"
-    compileSdk = 37
+    // Compose 1.13 exige compilar contra la API 37.1 o superior.
+    compileSdk {
+        version = release(37) { minorApiLevel = 1 }
+    }
     defaultConfig { minSdk = 29 }
     compileOptions {
         sourceCompatibility = JavaVersion.VERSION_17
