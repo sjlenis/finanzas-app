@@ -41,6 +41,8 @@ import com.finanzaspersonales.feature.transactions.CategoriesRoute
 import com.finanzaspersonales.feature.accounts.AccountsRoute
 import com.finanzaspersonales.feature.accounts.AccountDetailRoute
 import com.finanzaspersonales.feature.settings.SecuritySettingsRoute
+import com.finanzaspersonales.feature.settings.NotificationSettingsRoute
+import com.finanzaspersonales.feature.transactions.PendingRoute
 import androidx.navigation.NavType
 import androidx.navigation.navArgument
 
@@ -53,6 +55,8 @@ object Routes {
     const val ACCOUNT = "cuenta/{accountId}"
     fun account(id: Long) = "cuenta/$id"
     const val SECURITY = "seguridad"
+    const val NOTIFICATIONS = "notificaciones"
+    const val PENDING = "por-revisar"
 }
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -91,6 +95,7 @@ fun FinanzasApp() {
                 DashboardRoute(
                     onOpenAccount = { navController.navigate(Routes.account(it)) },
                     onOpenSecurity = { navController.navigate(Routes.SECURITY) },
+                    onOpenPending = { navController.navigate(Routes.PENDING) },
                 )
             }
             composable(TopLevelDestination.TRANSACTIONS.route) {
@@ -103,6 +108,8 @@ fun FinanzasApp() {
                     onAccounts = { navController.navigate(Routes.ACCOUNTS) },
                     onCategories = { navController.navigate(Routes.CATEGORIES) },
                     onSecurity = { navController.navigate(Routes.SECURITY) },
+                    onNotifications = { navController.navigate(Routes.NOTIFICATIONS) },
+                    onPending = { navController.navigate(Routes.PENDING) },
                 )
             }
             composable(
@@ -117,6 +124,8 @@ fun FinanzasApp() {
                 AccountDetailRoute(onBack = back, onOpenTransaction = openEntry)
             }
             composable(Routes.SECURITY) { SecuritySettingsRoute(onBack = back) }
+            composable(Routes.NOTIFICATIONS) { NotificationSettingsRoute(onBack = back) }
+            composable(Routes.PENDING) { PendingRoute(onBack = back, onEdit = openEntry) }
         }
     }
 }

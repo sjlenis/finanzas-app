@@ -29,6 +29,7 @@ data class DashboardUiState(
     val month: PeriodSummary = PeriodSummary(Money.ZERO, Money.ZERO),
     val spending: List<CategorySpending> = emptyList(),
     val hasPin: Boolean = true,
+    val pendingCount: Int = 0,
 ) {
     /** Dinero en cuentas líquidas (las que cuentan como disponibles). */
     val total: Money get() = accounts.filter { it.isLiquid }.map { it.balance }.sum()
@@ -51,7 +52,10 @@ class DashboardViewModel @Inject constructor(
         finance.observeCurrentMonth(),
         transactions.observeSpendingByCategory(month),
         security.config.map { it.hasPin },
-    ) { accountList, summary, spending, hasPin ->
-        DashboardUiState(loading = false, accounts = accountList, month = summary, spending = spending, hasPin = hasPin)
+        transactions.observePendingCount(),
+    ) { accountList, summary, spending, hasPin, pending ->
+        DashboardUiState(
+            loading = false, accounts = accountList, month = summary, spending = spending, hasPin = hasPin, pendingCount = pending,
+        )
     }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), DashboardUiState())
 }

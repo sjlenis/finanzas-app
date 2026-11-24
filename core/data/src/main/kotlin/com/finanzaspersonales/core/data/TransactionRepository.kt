@@ -140,6 +140,8 @@ class TransactionRepository @Inject constructor(
                     description = cleanDescription,
                     occurredAtEpochMs = occurredAt.toEpochMilli(),
                     notes = cleanNotes,
+                    // Editar un movimiento detectado equivale a revisarlo: queda confirmado.
+                    status = TransactionStatus.CONFIRMED,
                     updatedAtEpochMs = now,
                 ),
             )
@@ -221,6 +223,54 @@ class TransactionRepository @Inject constructor(
             .filter { it.status == TransactionStatus.CONFIRMED && it.kind in SPENDING_KINDS }
             .map { -it.amount }
             .sum()
+
+    // ------------------------------------------------------- movimientos por revisar
+
+    fun observePending(): Flow<List<Transaction>> = dao.observePending().map { rows -> rows.map { it.toModel() } }
+
+    fun observePendingCount(): Flow<Int> = dao.observePendingCount()
+
+    /**
+     * Confirma un movimiento detectado: desde ahora cuenta en saldos y totales.
+     * Un retiro se convierte en transferencia a la cuenta de efectivo.
+     */
+    suspend fun confirmPending(id: Long, cashAccountId: Long? = null) = db.withTransaction {
+        val tx = requireNotNull(dao.getById(id)) { "El movimiento ya no existe" }
+        require(tx.status == TransactionStatus.PENDING) { "Este movimiento ya estaba confirmado" }
+        val now = clock.millis()
+        if (tx.kind == TransactionKind.WITHDRAWAL) {
+            val cash = requireNotNull(cashAccountId) { "Elige la cuenta de efectivo" }
+            dao.deleteById(id)
+            dao.createTransfer(tx.accountId, cash, -tx.amountCentavos, tx.occurredAtEpochMs, tx.description, now)
+        } else {
+            dao.update(tx.copy(status = TransactionStatus.CONFIRMED, updatedAtEpochMs = now))
+        }
+        audit(id, "confirm", "${tx.kind} ${Money(tx.amountCentavos).formatCop()}", now)
+    }
+
+    /**
+     * El movimiento detectado era entre tus propias cuentas (por ejemplo, de
+     * Bancolombia a Nequi): se reemplaza por una transferencia, que no es gasto ni ingreso.
+     */
+    suspend fun pendingToTransfer(id: Long, otherAccountId: Long) = db.withTransaction {
+        val tx = requireNotNull(dao.getById(id)) { "El movimiento ya no existe" }
+        require(tx.status == TransactionStatus.PENDING) { "Este movimiento ya estaba confirmado" }
+        require(otherAccountId != tx.accountId) { "Elige otra cuenta" }
+        val now = clock.millis()
+        val amount = kotlin.math.abs(tx.amountCentavos)
+        val (from, to) = if (tx.amountCentavos < 0) tx.accountId to otherAccountId else otherAccountId to tx.accountId
+        dao.deleteById(id)
+        dao.createTransfer(from, to, amount, tx.occurredAtEpochMs, "Transferencia entre mis cuentas", now)
+        audit(id, "pending_to_transfer", Money(amount).formatCop(), now)
+    }
+
+    /** Descarta un movimiento detectado que no corresponde. */
+    suspend fun discardPending(id: Long) = db.withTransaction {
+        val tx = dao.getById(id) ?: return@withTransaction
+        require(tx.status == TransactionStatus.PENDING) { "Solo se descartan movimientos pendientes" }
+        dao.deleteById(id)
+        audit(id, "discard", "${tx.kind} ${Money(tx.amountCentavos).formatCop()}", clock.millis())
+    }
 
     /** Elimina un movimiento. Si es parte de una transferencia, elimina ambos lados. */
     suspend fun delete(transactionId: Long) = db.withTransaction {

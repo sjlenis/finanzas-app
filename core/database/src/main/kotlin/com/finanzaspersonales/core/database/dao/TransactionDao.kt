@@ -107,6 +107,36 @@ interface TransactionDao {
     @Insert
     suspend fun insert(transaction: TransactionEntity): Long
 
+    /** Para movimientos detectados: si la huella ya existe devuelve -1 y no guarda nada. */
+    @Insert(onConflict = androidx.room.OnConflictStrategy.IGNORE)
+    suspend fun insertIfNew(transaction: TransactionEntity): Long
+
+    /** Movimientos pendientes de confirmar, del más reciente al más antiguo. */
+    @Query(
+        """
+        SELECT t.*, a.name AS account_name, c.name AS category_name
+        FROM transactions t
+        JOIN accounts a ON a.id = t.account_id
+        LEFT JOIN categories c ON c.id = t.category_id
+        WHERE t.status = 'PENDING'
+        ORDER BY t.occurred_at DESC, t.id DESC
+        """,
+    )
+    fun observePending(): Flow<List<TransactionRow>>
+
+    @Query("SELECT COUNT(*) FROM transactions WHERE status = 'PENDING'")
+    fun observePendingCount(): Flow<Int>
+
+    /** Otro movimiento del mismo valor en la misma cuenta y en la misma ventana de tiempo. */
+    @Query(
+        """
+        SELECT COUNT(*) FROM transactions
+        WHERE account_id = :accountId AND amount_centavos = :amountCentavos
+          AND occurred_at >= :fromEpochMs AND occurred_at < :toEpochMs
+        """,
+    )
+    suspend fun countSimilar(accountId: Long, amountCentavos: Long, fromEpochMs: Long, toEpochMs: Long): Int
+
     @Insert
     suspend fun insertTransfer(transfer: TransferEntity): Long
 

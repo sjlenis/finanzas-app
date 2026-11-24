@@ -28,6 +28,8 @@ kotlin {
 dependencies {
     implementation(project(":core:designsystem"))
     implementation(project(":core:security"))
+    implementation(project(":core:data"))
+    implementation(libs.androidx.core.ktx)
     implementation(libs.biometric)
     implementation(libs.androidx.lifecycle.runtime.compose)
     implementation(libs.androidx.lifecycle.viewmodel.compose)

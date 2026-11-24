@@ -47,6 +47,7 @@ class MigrationTest {
         open().apply { openHelper.writableDatabase; close() }
         SQLiteDatabase.openDatabase(context.getDatabasePath(name).path, null, SQLiteDatabase.OPEN_READWRITE).use { raw ->
             raw.execSQL("DROP TABLE chat_messages")
+            raw.execSQL("DROP TABLE notification_samples")
             raw.version = 1
         }
 
@@ -57,6 +58,26 @@ class MigrationTest {
             assertEquals(DefaultData.accounts.size, accounts.size)
             db.chatDao().insert(ChatMessageEntity(role = "user", text = "hola", createdAtEpochMs = 1L))
             assertEquals(listOf("hola"), db.chatDao().observeLatest(10).first().map { it.text })
+        } finally {
+            db.close()
+        }
+    }
+
+    @Test
+    fun migrarDe2a3CreaLasMuestras() = runTest {
+        open().apply { openHelper.writableDatabase; close() }
+        SQLiteDatabase.openDatabase(context.getDatabasePath(name).path, null, SQLiteDatabase.OPEN_READWRITE).use { raw ->
+            raw.execSQL("DROP TABLE notification_samples")
+            raw.version = 2
+        }
+        val db = open()
+        try {
+            db.notificationSampleDao().insert(
+                com.finanzaspersonales.core.database.entity.NotificationSampleEntity(
+                    bank = "NEQUI", maskedText = "Pagaste \$5.000", result = "Pago", postedAtEpochMs = 1L,
+                ),
+            )
+            assertEquals(1, db.notificationSampleDao().observeAll().first().size)
         } finally {
             db.close()
         }
