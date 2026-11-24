@@ -24,7 +24,22 @@ android {
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
     }
 
+    signingConfigs {
+        // Clave de depuración fija y pública (no protege nada): así cada APK que compila
+        // GitHub tiene la misma firma y se puede instalar encima del anterior sin perder datos.
+        // La versión final (Fase 8) usará una clave privada que nunca se sube al repositorio.
+        getByName("debug") {
+            storeFile = file("debug.keystore")
+            storePassword = "android"
+            keyAlias = "androiddebugkey"
+            keyPassword = "android"
+        }
+    }
+
     buildTypes {
+        debug {
+            signingConfig = signingConfigs.getByName("debug")
+        }
         release {
             isMinifyEnabled = true
             isShrinkResources = true
