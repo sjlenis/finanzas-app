@@ -12,7 +12,11 @@ import com.finanzaspersonales.core.model.Transaction
 import com.finanzaspersonales.core.model.TransactionKind
 import com.finanzaspersonales.core.model.TransactionOrigin
 import com.finanzaspersonales.core.model.formatCop
+import com.finanzaspersonales.core.model.PeriodSummary
+import com.finanzaspersonales.core.model.TransactionStatus
+import com.finanzaspersonales.core.model.sum
 import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.map
 import java.time.Clock
 import java.time.Instant
@@ -101,6 +105,7 @@ class TransactionRepository @Inject constructor(
         description: String,
         occurredAt: Instant,
         notes: String?,
+        origin: TransactionOrigin = TransactionOrigin.MANUAL,
     ): Long = db.withTransaction {
         val signed = type.signedAmount(amount)
         val now = clock.millis()
@@ -115,7 +120,7 @@ class TransactionRepository @Inject constructor(
                     categoryId = categoryId,
                     description = cleanDescription,
                     occurredAtEpochMs = occurredAt.toEpochMilli(),
-                    origin = TransactionOrigin.MANUAL,
+                    origin = origin,
                     notes = cleanNotes,
                     createdAtEpochMs = now,
                     updatedAtEpochMs = now,
@@ -166,6 +171,57 @@ class TransactionRepository @Inject constructor(
         )
     }
 
+    /**
+     * Registra un préstamo: [given] = prestaste (sale dinero de la cuenta), si no lo
+     * recibiste (entra). Mueve el saldo, pero no cuenta como ingreso ni como gasto.
+     * El seguimiento de lo que falta por pagar llega con el módulo de deudas.
+     */
+    suspend fun saveLoan(
+        given: Boolean,
+        amount: Money,
+        accountId: Long,
+        categoryId: Long?,
+        description: String,
+        counterparty: String?,
+        occurredAt: Instant,
+        origin: TransactionOrigin = TransactionOrigin.MANUAL,
+    ): Long = db.withTransaction {
+        require(amount.centavos > 0) { "El valor debe ser mayor que cero" }
+        val signed = if (given) -amount else amount
+        val kind = if (given) TransactionKind.LOAN_GIVEN else TransactionKind.LOAN_RECEIVED
+        val now = clock.millis()
+        val id = dao.insert(
+            TransactionEntity(
+                accountId = accountId,
+                amountCentavos = signed.centavos,
+                kind = kind,
+                categoryId = categoryId,
+                description = description.trim().ifEmpty { if (given) "Préstamo hecho" else "Préstamo recibido" },
+                occurredAtEpochMs = occurredAt.toEpochMilli(),
+                origin = origin,
+                notes = counterparty?.trim()?.ifEmpty { null }?.let { (if (given) "Prestado a " else "Prestado por ") + it },
+                createdAtEpochMs = now,
+                updatedAtEpochMs = now,
+            ),
+        )
+        audit(id, "create", "$kind ${signed.formatCop()}", now)
+        id
+    }
+
+    /** Ingresos y gastos reales de un rango (misma regla que el panel de inicio). */
+    suspend fun totals(range: ClosedOpenRange): PeriodSummary =
+        dao.observeTotals(range.start.toEpochMilli(), range.endExclusive.toEpochMilli()).first()
+            .let { PeriodSummary(Money(it.incomeCentavos), Money(it.expenseCentavos)) }
+
+    suspend fun spendingByCategory(range: ClosedOpenRange): List<CategorySpending> = observeSpendingByCategory(range).first()
+
+    /** Gasto neto de una categoría (y sus subcategorías) en un rango; las devoluciones restan. */
+    suspend fun spentIn(range: ClosedOpenRange, categoryId: Long): Money =
+        observe(range, categoryId = categoryId).first()
+            .filter { it.status == TransactionStatus.CONFIRMED && it.kind in SPENDING_KINDS }
+            .map { -it.amount }
+            .sum()
+
     /** Elimina un movimiento. Si es parte de una transferencia, elimina ambos lados. */
     suspend fun delete(transactionId: Long) = db.withTransaction {
         val tx = dao.getById(transactionId) ?: return@withTransaction
@@ -178,6 +234,10 @@ class TransactionRepository @Inject constructor(
             dao.deleteById(transactionId)
             audit(transactionId, "delete", "${tx.kind} ${Money(tx.amountCentavos).formatCop()} ${tx.description}", now)
         }
+    }
+
+    private companion object {
+        val SPENDING_KINDS = setOf(TransactionKind.EXPENSE, TransactionKind.FEE, TransactionKind.REFUND)
     }
 
     private suspend fun audit(id: Long, action: String, detail: String?, now: Long, type: String = "transaction") {
