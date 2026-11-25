@@ -108,6 +108,16 @@ class AccountDetailViewModel @Inject constructor(
         viewModelScope.launch { repository.setArchived(accountId, archived) }
     }
 
+    suspend fun movementCount(): Int = repository.movementCount(accountId)
+
+    fun delete(onDone: () -> Unit) {
+        viewModelScope.launch {
+            runCatching { repository.delete(accountId) }
+                .onSuccess { onDone() }
+                .onFailure { _message.value = it.message }
+        }
+    }
+
     fun clearMessage() { _message.value = null }
 
     companion object {

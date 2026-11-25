@@ -116,4 +116,21 @@ class RepositoriesTest {
     fun noSePermitenCategoriasDuplicadas() = runTest {
         categories.create("alimentación", null, CategoryClass.EXPENSE, isEssential = false)
     }
+
+    @Test
+    fun eliminarCuentaNoCambiaElSaldoDeLasOtras() = runTest {
+        val nequi = id("Nequi")
+        val bolsillo = accounts.create("Ahorro", com.finanzaspersonales.core.model.AccountType.WALLET, null, Money.ofPesos(0))
+        accounts.update(nequi, "Nequi", com.finanzaspersonales.core.model.AccountType.WALLET, "Nequi", Money.ofPesos(400_000))
+        transactions.saveTransfer(null, nequi, bolsillo, Money.ofPesos(300_000), "Al ahorro", now)
+        transactions.saveManual(null, ManualEntryType.EXPENSE, Money.ofPesos(10_000), bolsillo, null, "Algo", now, null)
+        assertEquals(2, accounts.movementCount(bolsillo))
+
+        accounts.delete(bolsillo)
+
+        assertTrue(accounts.observeAccounts(includeArchived = true).first().none { it.id == bolsillo })
+        assertEquals(Money.ofPesos(100_000), balance("Nequi"))
+        val left = transactions.observe(all).first().single()
+        assertEquals(TransactionKind.ADJUSTMENT, left.kind)
+    }
 }

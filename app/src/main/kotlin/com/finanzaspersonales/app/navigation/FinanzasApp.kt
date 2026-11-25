@@ -52,6 +52,7 @@ import com.finanzaspersonales.feature.planning.EmergencyFundRoute
 import com.finanzaspersonales.feature.planning.GoalsRoute
 import com.finanzaspersonales.feature.planning.InsightsRoute
 import com.finanzaspersonales.feature.planning.ScanRoute
+import com.finanzaspersonales.feature.planning.ImportConfigRoute
 import com.finanzaspersonales.feature.planning.StatisticsRoute
 import androidx.navigation.NavType
 import androidx.navigation.navArgument
@@ -77,6 +78,7 @@ object Routes {
     const val INSIGHTS = "analisis"
     const val STATISTICS = "estadisticas"
     const val SCAN = "leer-foto"
+    const val IMPORT = "importar-configuracion"
 }
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -133,6 +135,7 @@ fun FinanzasApp() {
                     onCalendar = { navController.navigate(Routes.CALENDAR) },
                     onInsights = { navController.navigate(Routes.INSIGHTS) },
                     onStatistics = { navController.navigate(Routes.STATISTICS) },
+                    onImport = { navController.navigate(Routes.IMPORT) },
                 )
             }
             composable(
@@ -166,6 +169,7 @@ fun FinanzasApp() {
             composable(Routes.INSIGHTS) { InsightsRoute(onBack = back) }
             composable(Routes.STATISTICS) { StatisticsRoute(onBack = back) }
             composable(Routes.SCAN) { ScanRoute(onBack = back) }
+            composable(Routes.IMPORT) { ImportConfigRoute(onBack = back) }
             composable(Routes.CALENDAR) { CalendarRoute(onBack = back, onOpenDebt = { navController.navigate(Routes.debt(it)) }) }
         }
     }

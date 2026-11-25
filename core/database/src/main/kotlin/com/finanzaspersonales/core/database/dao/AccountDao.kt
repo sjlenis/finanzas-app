@@ -79,4 +79,42 @@ interface AccountDao {
 
     @Query("SELECT * FROM accounts WHERE id = :id")
     suspend fun getById(id: Long): AccountEntity?
+
+    // ---- Eliminar una cuenta (ver AccountRepository.delete) ----
+
+    @Query("SELECT COUNT(*) FROM transactions WHERE account_id = :id")
+    suspend fun countTransactions(id: Long): Int
+
+    /**
+     * El otro lado de las transferencias con esta cuenta queda como ajuste suelto, para que
+     * el saldo de la otra cuenta no cambie al borrar esta.
+     */
+    @Query(
+        """
+        UPDATE transactions SET transfer_id = NULL, kind = 'ADJUSTMENT', description = description || ' (cuenta eliminada: ' || :name || ')'
+        WHERE account_id != :id AND transfer_id IN (SELECT id FROM transfers WHERE from_account_id = :id OR to_account_id = :id)
+        """,
+    )
+    suspend fun detachTransferCounterparts(id: Long, name: String)
+
+    @Query("UPDATE debt_payments SET transaction_id = NULL WHERE transaction_id IN (SELECT id FROM transactions WHERE account_id = :id)")
+    suspend fun clearDebtPaymentLinks(id: Long)
+
+    @Query("UPDATE obligation_payments SET transaction_id = NULL WHERE transaction_id IN (SELECT id FROM transactions WHERE account_id = :id)")
+    suspend fun clearObligationPaymentLinks(id: Long)
+
+    @Query("UPDATE chat_messages SET transaction_id = NULL WHERE transaction_id IN (SELECT id FROM transactions WHERE account_id = :id)")
+    suspend fun clearChatLinks(id: Long)
+
+    @Query("UPDATE obligations SET account_id = NULL WHERE account_id = :id")
+    suspend fun clearObligationAccount(id: Long)
+
+    @Query("DELETE FROM transactions WHERE account_id = :id")
+    suspend fun deleteTransactionsOf(id: Long)
+
+    @Query("DELETE FROM transfers WHERE from_account_id = :id OR to_account_id = :id")
+    suspend fun deleteTransfersOf(id: Long)
+
+    @Query("DELETE FROM accounts WHERE id = :id")
+    suspend fun deleteById(id: Long)
 }

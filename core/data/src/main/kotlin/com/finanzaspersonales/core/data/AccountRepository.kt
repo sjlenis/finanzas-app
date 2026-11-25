@@ -91,6 +91,28 @@ class AccountRepository @Inject constructor(
         audit("account", id, if (archived) "archive" else "unarchive", null, clock.millis())
     }
 
+    /** Cuántos movimientos se borrarían junto con la cuenta. */
+    suspend fun movementCount(id: Long): Int = accountDao.countTransactions(id)
+
+    /**
+     * Elimina la cuenta y sus movimientos. Las transferencias con otras cuentas no cambian el
+     * saldo de esas otras cuentas: su lado queda como un ajuste (no es ingreso ni gasto).
+     * Los pagos fijos o de deudas marcados siguen marcados, solo pierden el enlace al movimiento.
+     */
+    suspend fun delete(id: Long) = db.withTransaction {
+        val account = requireNotNull(accountDao.getById(id)) { "La cuenta no existe" }
+        val count = accountDao.countTransactions(id)
+        accountDao.detachTransferCounterparts(id, account.name)
+        accountDao.clearDebtPaymentLinks(id)
+        accountDao.clearObligationPaymentLinks(id)
+        accountDao.clearChatLinks(id)
+        accountDao.clearObligationAccount(id)
+        accountDao.deleteTransactionsOf(id)
+        accountDao.deleteTransfersOf(id)
+        accountDao.deleteById(id)
+        audit("account", id, "delete", "${account.name}, $count movimientos", clock.millis())
+    }
+
     /**
      * Conciliación: si el saldo real que ves en el banco no coincide con el calculado,
      * crea un movimiento de AJUSTE por la diferencia. El ajuste no cuenta como ingreso

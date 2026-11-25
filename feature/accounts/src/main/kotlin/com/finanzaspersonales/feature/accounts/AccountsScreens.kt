@@ -1,5 +1,6 @@
 package com.finanzaspersonales.feature.accounts
 
+import kotlinx.coroutines.launch
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
@@ -102,6 +103,8 @@ fun AccountDetailRoute(
     val message by viewModel.message.collectAsStateWithLifecycle()
     var editing by remember { mutableStateOf(false) }
     var reconciling by remember { mutableStateOf(false) }
+    var deleting by remember { mutableStateOf<Int?>(null) }
+    val scope = androidx.compose.runtime.rememberCoroutineScope()
     val account = state.account
 
     Scaffold(
@@ -151,6 +154,9 @@ fun AccountDetailRoute(
                 TextButton(onClick = { viewModel.setArchived(!account.isArchived) }) {
                     Text(if (account.isArchived) "Reactivar cuenta" else "Archivar cuenta (se oculta del inicio, conserva su historial)")
                 }
+                TextButton(onClick = { scope.launch { deleting = viewModel.movementCount() } }) {
+                    Text("Eliminar cuenta", color = MaterialTheme.colorScheme.error)
+                }
             }
         }
     }
@@ -184,6 +190,26 @@ fun AccountDetailRoute(
                 }) { Text("Conciliar") }
             },
             dismissButton = { TextButton(onClick = { reconciling = false }) { Text("Cancelar") } },
+        )
+    }
+    deleting?.let { count ->
+        if (account == null) return@let
+        AlertDialog(
+            onDismissRequest = { deleting = null },
+            title = { Text("¿Eliminar ${account.name}?") },
+            text = {
+                Text(
+                    (if (count == 0) "La cuenta no tiene movimientos. " else "También se borran sus $count movimientos. ") +
+                        "Si hiciste transferencias con otras cuentas, el saldo de esas otras cuentas no cambia. " +
+                        "Esto no se puede deshacer. Si solo quieres ocultarla y conservar su historial, usa Archivar.",
+                )
+            },
+            confirmButton = {
+                TextButton(onClick = { deleting = null; viewModel.delete(onBack) }) {
+                    Text("Eliminar", color = MaterialTheme.colorScheme.error)
+                }
+            },
+            dismissButton = { TextButton(onClick = { deleting = null }) { Text("Cancelar") } },
         )
     }
     message?.let { InfoDialog(it, viewModel::clearMessage) }
