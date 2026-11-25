@@ -140,4 +140,27 @@ class PlanningRepositoryTest {
         planning.setBudget(food, pesos(600_000))
         assertEquals(listOf(pesos(600_000)), planning.observeBudgets().first().map { it.limit })
     }
+
+    @Test
+    fun dineroRealmenteDisponibleDelEjemplo() = runTest {
+        // Ejemplo del requerimiento: 2.000.000 - 300.000 servicios - 400.000 cuotas - 200.000 emergencias = 1.100.000.
+        val banco = accountId("Bancolombia")
+        accounts.update(banco, "Bancolombia", com.finanzaspersonales.core.model.AccountType.BANK, "Bancolombia", pesos(2_000_000))
+        planning.saveObligation(null, "Servicios", pesos(300_000), 28, false, null, banco, true)
+        planning.saveDebt(null, "Crédito", null, pesos(4_000_000), pesos(4_000_000), 0, RateType.NONE, pesos(400_000), 30, null, null)
+        planning.contribute(planning.emergencyFundId(), pesos(200_000), null)
+        val overview = OverviewRepository(accounts, planning, transactions, clock)
+
+        val o = overview.observe().first()
+        assertEquals(pesos(2_000_000), o.money.total)
+        assertEquals(pesos(700_000), o.money.obligations)
+        assertEquals(pesos(1_100_000), o.money.available)
+
+        // Pagar la obligación descuenta el dinero de la cuenta y deja de estar pendiente: no se resta dos veces.
+        planning.markObligationPaid(o.pending.first { it.name == "Servicios" }.id, YearMonth.of(2026, 11), banco)
+        val after = overview.observe().first()
+        assertEquals(pesos(1_700_000), after.money.total)
+        assertEquals(pesos(400_000), after.money.obligations)
+        assertEquals(pesos(1_100_000), after.money.available)
+    }
 }

@@ -46,6 +46,7 @@ data class AssistantReply(val text: String, val card: DraftCard? = null, val sta
 class FinancialAssistant @Inject constructor(
     private val transactions: TransactionRepository,
     private val planning: com.finanzaspersonales.core.data.PlanningRepository,
+    private val overview: com.finanzaspersonales.core.data.OverviewRepository,
     private val clock: Clock,
 ) {
     private val parser = MessageParser()
@@ -176,7 +177,7 @@ class FinancialAssistant @Inject constructor(
             DraftKind.WITHDRAWAL -> "Guardado: retiro de $amount de ${card.accountName} a ${card.toAccountName}, $whenText."
             DraftKind.LOAN_GIVEN, DraftKind.LOAN_RECEIVED ->
                 "Guardado: ${card.kind.label.lowercase()} de $amount en ${card.accountName}, $whenText. " +
-                    "Mueve el saldo, pero no cuenta como ingreso ni gasto. El seguimiento de deudas llega en la Fase 6."
+                    "Mueve el saldo, pero no cuenta como ingreso ni gasto. Si es una deuda con cuotas, regístrala en Perfil > Deudas para seguirla."
             else -> "Guardado: ${card.kind.label.lowercase()} de $amount" +
                 (card.categoryName?.let { " en $it" } ?: "") + " desde ${card.accountName}, $whenText."
         }
@@ -233,35 +234,44 @@ class FinancialAssistant @Inject constructor(
                     top.forEachIndexed { i, c -> append("\n${i + 1}. ${c.categoryName}: ${c.amount.formatCop()}") }
                 }
             }
-            FinanceQuery.WeeklyAllowance -> {
-                val week = transactions.totals(Period.WEEK.rangeContaining(today)).expense
-                "Todavía no puedo decirte cuánto puedes gastar: para eso necesito tus presupuestos y obligaciones, " +
-                    "que llegan en la Fase 6. Lo que sí sé: esta semana llevas ${week.formatCop()} en gastos."
-            }
-            FinanceQuery.UpcomingPayments -> upcomingDebtPayments(today)
+            FinanceQuery.WeeklyAllowance -> weeklyAllowance(today)
+            FinanceQuery.UpcomingPayments -> upcomingPayments()
             FinanceQuery.SavingsGoals -> goalsSummary()
         }
     }
 
-    private suspend fun upcomingDebtPayments(today: LocalDate): String {
-        val debts = planning.observeDebts().first()
-            .filter { it.status == com.finanzaspersonales.core.data.DebtStatus.ACTIVE && it.dueDay != null }
-            .sortedBy { d -> nextDue(d.dueDay!!, today) }
-        if (debts.isEmpty()) {
-            return "No tienes cuotas de deudas con día de pago registradas. Agrégalas en Perfil > Deudas. " +
-                "El calendario de otros pagos (arriendo, servicios) llega en la siguiente entrega."
+    private suspend fun weeklyAllowance(today: LocalDate): String {
+        val o = overview.observe().first()
+        val m = o.money
+        val week = transactions.totals(Period.WEEK.rangeContaining(today)).expense
+        val reserved = m.obligations + m.emergencyFund + m.goals
+        val breakdown = "Tienes ${m.total.formatCop()} en cuentas" +
+            (if (reserved.centavos > 0) " y ${reserved.formatCop()} ya comprometidos (pagos pendientes del mes y dinero apartado)" else "") + "."
+        val text = if (m.available.centavos <= 0) {
+            "$breakdown No te queda dinero libre hasta tu próximo ingreso: lo que hay alcanza solo para lo comprometido" +
+                (if (m.available.isNegative) " y te faltan ${m.available.abs().formatCop()}" else "") + "."
+        } else {
+            val until = o.nextIncome?.let { "hasta tu próximo ingreso (${formatShortDate(it)})" } ?: "hasta fin de mes"
+            "Puedes gastar unos ${o.weeklyAllowance.formatCop()} por semana $until. $breakdown"
         }
-        return buildString {
-            append("Tus próximas cuotas:")
-            debts.forEach { d -> append("\n• ${d.name}: ${d.monthlyPayment.formatCop()} el ${formatShortDate(nextDue(d.dueDay!!, today))}") }
-        }
+        val hint = if (o.monthItems.isEmpty()) " Para que el cálculo sea más exacto, agrega tus pagos fijos e ingresos en Perfil > Calendario de pagos." else ""
+        return "$text Esta semana llevas ${week.formatCop()} en gastos.$hint"
     }
 
-    private fun nextDue(day: Int, today: LocalDate): LocalDate {
-        val thisMonth = today.withDayOfMonth(minOf(day, today.lengthOfMonth()))
-        if (!thisMonth.isBefore(today)) return thisMonth
-        val next = today.plusMonths(1)
-        return next.withDayOfMonth(minOf(day, next.lengthOfMonth()))
+    private suspend fun upcomingPayments(): String {
+        val o = overview.observe().first()
+        if (o.monthItems.none { it.type != com.finanzaspersonales.core.data.UpcomingType.INCOME }) {
+            return "No tienes pagos registrados. Agrega tus pagos fijos en Perfil > Calendario de pagos y tus deudas en Perfil > Deudas."
+        }
+        val pending = o.pending
+        if (pending.isEmpty()) return "No te quedan pagos pendientes este mes."
+        return buildString {
+            append("Te quedan ${pending.size} ${if (pending.size == 1) "pago" else "pagos"} este mes por ${o.money.obligations.formatCop()}:")
+            pending.forEach { p ->
+                val late = if (p.date.isBefore(o.today)) " (vencido)" else ""
+                append("\n• ${p.name}: ${p.amount.formatCop()} el ${formatShortDate(p.date)}$late")
+            }
+        }
     }
 
     private suspend fun goalsSummary(): String {

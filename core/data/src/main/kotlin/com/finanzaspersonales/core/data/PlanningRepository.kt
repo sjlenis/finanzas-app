@@ -138,6 +138,13 @@ class PlanningRepository @Inject constructor(
             txId ?: 0L
         }
 
+    /** Ids de deudas con al menos un pago registrado en [month]. */
+    fun observeDebtsPaidIn(month: YearMonth): Flow<Set<Long>> {
+        val from = month.atDay(1).atStartOfDay(BogotaTime.ZONE).toInstant().toEpochMilli()
+        val to = month.plusMonths(1).atDay(1).atStartOfDay(BogotaTime.ZONE).toInstant().toEpochMilli()
+        return dao.observeDebtPaymentsBetween(from, to).map { list -> list.map { it.debtId }.toSet() }
+    }
+
     // ================================================================= metas y fondo
 
     fun observeGoals(): Flow<List<SavingsGoal>> = dao.observeGoals().map { list ->

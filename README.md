@@ -12,7 +12,7 @@ Sin servidores, sin cuentas en la nube y con mantenimiento de $0.
 | 3 | Cuentas, movimientos, categorías, transferencias, dashboard | Hecha |
 | 4 | Asistente financiero (chat, intérprete local sin internet) | Hecha |
 | 5 | Detección de notificaciones Nequi / Bancolombia | En prueba |
-| 6 | Presupuestos, deudas, fondo de emergencia, metas, calendario | En construcción (parte A: deudas, metas, fondo) |
+| 6 | Presupuestos, deudas, fondo de emergencia, metas, calendario | En prueba |
 | 7 | Recomendaciones e inteligencia financiera | Pendiente |
 | 8 | Pruebas finales y APK firmado | Pendiente |
 

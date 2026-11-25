@@ -48,6 +48,7 @@ fun ProfileRoute(
     onDebts: () -> Unit = {},
     onGoals: () -> Unit = {},
     onEmergencyFund: () -> Unit = {},
+    onCalendar: () -> Unit = {},
 ) {
     val sections = listOf(
         Section("Cuentas", Icons.Outlined.AccountBalance, "Saldos, conciliación e historial por cuenta", onAccounts),
@@ -58,7 +59,7 @@ fun ProfileRoute(
         Section("Deudas", Icons.Outlined.CreditCard, "Plan bola de nieve o avalancha, pagos e intereses", onDebts),
         Section("Metas de ahorro", Icons.Outlined.Savings, "Cuánto ahorrar y si te alcanza", onGoals),
         Section("Fondo de emergencia", Icons.Outlined.Shield, "De 3 a 6 meses de gastos esenciales", onEmergencyFund),
-        Section("Calendario", Icons.Outlined.CalendarMonth, "Llega en la siguiente entrega de la Fase 6"),
+        Section("Calendario de pagos", Icons.Outlined.CalendarMonth, "Pagos fijos, cuotas e ingresos del mes", onCalendar),
         Section("Estadísticas", Icons.Outlined.BarChart, "Llega en la Fase 7"),
     )
     val context = LocalContext.current

@@ -32,16 +32,21 @@ import com.finanzaspersonales.core.designsystem.component.MoneyText
 import com.finanzaspersonales.core.designsystem.component.MoneyTone
 import com.finanzaspersonales.core.designsystem.theme.AmountLarge
 import com.finanzaspersonales.core.model.Money
+import com.finanzaspersonales.core.model.formatCop
+import com.finanzaspersonales.engine.finance.BudgetLevel
+import com.finanzaspersonales.engine.finance.BudgetStatus
 
 @Composable
 fun DashboardRoute(
     onOpenAccount: (Long) -> Unit,
     onOpenSecurity: () -> Unit,
     onOpenPending: () -> Unit,
+    onOpenCalendar: () -> Unit = {},
+    onOpenBudgets: () -> Unit = {},
     viewModel: DashboardViewModel = hiltViewModel(),
 ) {
     val state by viewModel.state.collectAsStateWithLifecycle()
-    DashboardScreen(state, onOpenAccount, onOpenSecurity, onOpenPending)
+    DashboardScreen(state, onOpenAccount, onOpenSecurity, onOpenPending, onOpenCalendar, onOpenBudgets)
 }
 
 /**
@@ -54,6 +59,8 @@ fun DashboardScreen(
     onOpenAccount: (Long) -> Unit,
     onOpenSecurity: () -> Unit,
     onOpenPending: () -> Unit = {},
+    onOpenCalendar: () -> Unit = {},
+    onOpenBudgets: () -> Unit = {},
 ) {
     if (state.loading) {
         Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) { CircularProgressIndicator() }
@@ -91,11 +98,54 @@ fun DashboardScreen(
                     Text("En efectivo", style = MaterialTheme.typography.bodyMedium)
                     MoneyText(state.cash)
                 }
-                Text(
-                    "El dinero realmente disponible (descontando reservas y compromisos) llegará en la Fase 6.",
-                    style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                )
+            }
+        }
+        state.overview?.let { o ->
+            item {
+                FinanceCard(title = "Dinero realmente disponible") {
+                    MoneyText(o.money.available, style = AmountLarge, tone = MoneyTone.Signed)
+                    LabelRow("Pagos pendientes del mes", o.money.obligations)
+                    if (o.money.emergencyFund.centavos > 0) LabelRow("Apartado en el fondo de emergencia", o.money.emergencyFund)
+                    if (o.money.goals.centavos > 0) LabelRow("Apartado en metas", o.money.goals)
+                    if (o.money.available.isNegative) {
+                        Text(
+                            "Lo que tienes no alcanza para cubrir lo pendiente y lo apartado. Revisa tus pagos o usa parte del ahorro solo si es necesario.",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.error,
+                        )
+                    } else if (o.weeklyAllowance.centavos > 0) {
+                        LabelRow(if (o.nextIncome != null) "Para gastar por semana hasta tu próximo ingreso" else "Para gastar por semana hasta fin de mes", o.weeklyAllowance)
+                    }
+                }
+            }
+            item {
+                FinanceCard(title = "Próximos pagos") {
+                    val next = o.pending.take(4)
+                    if (next.isEmpty()) {
+                        Text(
+                            if (o.monthItems.isEmpty()) "Agrega tus pagos fijos e ingresos en el calendario para verlos aquí."
+                            else "No te quedan pagos pendientes este mes.",
+                            style = MaterialTheme.typography.bodyMedium,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        )
+                    }
+                    next.forEach { p ->
+                        val late = p.date.isBefore(o.today)
+                        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
+                            Column(Modifier.weight(1f)) {
+                                Text(p.name, style = MaterialTheme.typography.bodyMedium)
+                                Text(
+                                    (if (late) "Vencido · " else "") + com.finanzaspersonales.core.designsystem.component.formatShortDate(p.date),
+                                    style = MaterialTheme.typography.bodySmall,
+                                    color = if (late) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.onSurfaceVariant,
+                                )
+                            }
+                            MoneyText(p.amount)
+                        }
+                    }
+                    LabelRow("Saldo estimado a fin de mes", o.projectedEndOfMonth, MoneyTone.Signed)
+                    TextButton(onClick = onOpenCalendar) { Text("Ver calendario") }
+                }
             }
         }
         item {
@@ -167,11 +217,38 @@ fun DashboardScreen(
                 }
             }
         }
-        items(upcomingSections) { (title, phase) ->
-            FinanceCard(title = title) {
-                Text("Disponible en la $phase.", style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+        state.overview?.let { o ->
+            item {
+                FinanceCard(title = "Presupuestos") {
+                    if (o.budgets.isEmpty()) {
+                        Text("Aún no tienes presupuestos. Créalos en la pestaña Presupuestos.", style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    } else {
+                        val alerts = o.budgets.filter { it.status.level != BudgetLevel.OK }
+                        if (alerts.isEmpty()) {
+                            Text("Vas bien: ningún presupuesto pasa del ${BudgetStatus.NEAR_PERCENT} %.", style = MaterialTheme.typography.bodyMedium)
+                        }
+                        alerts.take(4).forEach { line ->
+                            val over = line.status.level == BudgetLevel.OVER
+                            Text(
+                                if (over) "${line.budget.categoryName}: te pasaste por ${(line.status.spent - line.status.limit).formatCop()}"
+                                else "${line.budget.categoryName}: llevas el ${line.status.percent} %",
+                                style = MaterialTheme.typography.bodyMedium,
+                                color = if (over) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.onSurface,
+                            )
+                        }
+                    }
+                    TextButton(onClick = onOpenBudgets) { Text("Ver presupuestos") }
+                }
             }
         }
+    }
+}
+
+@Composable
+private fun LabelRow(label: String, money: Money, tone: MoneyTone = MoneyTone.Neutral) {
+    Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
+        Text(label, style = MaterialTheme.typography.bodyMedium, modifier = Modifier.weight(1f))
+        MoneyText(money, tone = tone)
     }
 }
 
@@ -210,7 +287,3 @@ private fun SpendingCard(state: DashboardUiState) {
     }
 }
 
-private val upcomingSections = listOf(
-    "Dinero comprometido y próximos pagos" to "Fase 6",
-    "Estado de los presupuestos" to "Fase 6",
-)
