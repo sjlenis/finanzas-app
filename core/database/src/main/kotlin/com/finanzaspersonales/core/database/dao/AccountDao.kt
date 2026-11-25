@@ -103,6 +103,9 @@ interface AccountDao {
     @Query("UPDATE obligation_payments SET transaction_id = NULL WHERE transaction_id IN (SELECT id FROM transactions WHERE account_id = :id)")
     suspend fun clearObligationPaymentLinks(id: Long)
 
+    @Query("UPDATE obligation_partials SET transaction_id = NULL WHERE transaction_id IN (SELECT id FROM transactions WHERE account_id = :id)")
+    suspend fun clearObligationPartialLinks(id: Long)
+
     @Query("UPDATE chat_messages SET transaction_id = NULL WHERE transaction_id IN (SELECT id FROM transactions WHERE account_id = :id)")
     suspend fun clearChatLinks(id: Long)
 

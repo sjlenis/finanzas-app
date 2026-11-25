@@ -33,8 +33,13 @@ data class UpcomingItem(
     val paid: Boolean,
     val seq: Int = 0,
     val usdAmount: Money? = null,
+    /** Lo abonado este mes a un pago o ingreso fijo que aún no está completo. */
+    val received: Money = Money.ZERO,
 ) {
     val key: String get() = "$type-$id-$seq"
+
+    /** Lo que falta: el valor menos los abonos (cero si ya está pagado). */
+    val remaining: Money get() = if (paid) Money.ZERO else (amount - received).let { if (it.isNegative) Money.ZERO else it }
 }
 
 data class BudgetLine(val budget: Budget, val status: BudgetStatus)
@@ -83,10 +88,11 @@ class OverviewRepository @Inject constructor(
         val today = BogotaTime.today(clock)
         val month = YearMonth.from(today)
         val monthRange = Period.MONTH.rangeContaining(today)
+        val obligationState = combine(planning.observeObligations(), planning.observeObligationPartials(month)) { o, p -> o to p }
         val schedule = combine(
-            planning.observeObligations(), planning.observeObligationPayments(month), planning.observeDebts(),
+            obligationState, planning.observeObligationPayments(month), planning.observeDebts(),
             planning.observeDebtPaymentCounts(month), preferences.usdRate,
-        ) { obligations, paid, debts, debtPayments, rate ->
+        ) { (obligations, partials), paid, debts, debtPayments, rate ->
             val items = buildList {
                 obligations.filter { it.active }.forEach { o ->
                     val isPaid = o.id in paid
@@ -100,6 +106,7 @@ class OverviewRepository @Inject constructor(
                         UpcomingItem(
                             o.id, if (o.isIncome) UpcomingType.INCOME else UpcomingType.OBLIGATION, o.name, cop,
                             month.dayClamped(o.dayOfMonth), isPaid, usdAmount = o.amount.takeIf { usd },
+                            received = partials[o.id] ?: Money.ZERO,
                         ),
                     )
                 }
@@ -123,10 +130,11 @@ class OverviewRepository @Inject constructor(
             val liquid = accountList.filter { it.isLiquid }.map { it.balance }.sum()
             val pending = items.filter { !it.paid && it.type != UpcomingType.INCOME }
             val incomes = items.filter { it.type == UpcomingType.INCOME }
-            val expectedIncome = incomes.filter { !it.paid }.map { it.amount }.sum()
+            // Lo ya abonado está en las cuentas: solo se espera lo que falta.
+            val expectedIncome = incomes.filter { !it.paid }.map { it.remaining }.sum()
             val money = AvailableMoney(
                 total = liquid,
-                obligations = pending.map { it.amount }.sum(),
+                obligations = pending.map { it.remaining }.sum(),
                 emergencyFund = goals.filter { it.isEmergencyFund }.map { it.saved }.sum(),
                 goals = goals.filter { !it.isEmergencyFund }.map { it.saved }.sum(),
             )

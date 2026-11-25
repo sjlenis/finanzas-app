@@ -38,6 +38,7 @@ import com.finanzaspersonales.core.designsystem.component.FinanceCard
 import com.finanzaspersonales.core.designsystem.component.MoneyText
 import com.finanzaspersonales.core.designsystem.component.formatShortDate
 import com.finanzaspersonales.core.model.formatCop
+import com.finanzaspersonales.core.model.Money
 import com.finanzaspersonales.core.model.CategoryClass
 import com.finanzaspersonales.core.designsystem.component.MoneyTone
 import java.time.YearMonth
@@ -111,6 +112,7 @@ fun CalendarRoute(onBack: () -> Unit, onOpenDebt: (Long) -> Unit, viewModel: Cal
             accounts = state.accounts.map { Choice(it.id, it.name) },
             onDismiss = { selected = null },
             onMarkPaid = { accountId, paid, updateRate -> viewModel.markPaid(item.id, accountId, paid, item.usdAmount, updateRate) { selected = null } },
+            onPayPart = { accountId, digits -> viewModel.payPart(item.id, accountId, digits) { selected = null } },
             onUnmark = { viewModel.unmarkPaid(item.id) { selected = null } },
             onEdit = { selected = null; form = ObligationForm.from(obligation) },
         )
@@ -167,7 +169,9 @@ private fun CalendarRow(item: UpcomingItem, isLate: Boolean, onClick: () -> Unit
                     isLate && item.type == UpcomingType.INCOME -> "Aún no recibido"
                     isLate -> "Vencido"
                     else -> "Pendiente"
-                }
+                } + if (!item.paid && item.received.centavos > 0) {
+                    " · ${if (item.type == UpcomingType.INCOME) "recibido" else "abonado"} ${item.received.formatCop()}, faltan ${item.remaining.formatCop()}"
+                } else ""
                 Note("${formatShortDate(item.date)} · ${item.type.label()} · $status", error = isLate)
             }
             Column(horizontalAlignment = Alignment.End) {
@@ -190,13 +194,14 @@ private fun ItemDialog(
     accounts: List<Choice<Long>>,
     onDismiss: () -> Unit,
     onMarkPaid: (accountId: Long?, paidDigits: String, updateRate: Boolean) -> Unit,
+    onPayPart: (accountId: Long?, digits: String) -> Unit,
     onUnmark: () -> Unit,
     onEdit: () -> Unit,
 ) {
     val income = item.type == UpcomingType.INCOME
     var accountId by remember { mutableStateOf(obligation.accountId ?: accounts.firstOrNull()?.value) }
     val usd = item.usdAmount != null
-    var paidDigits by remember { mutableStateOf(item.amount.toDigits()) }
+    var paidDigits by remember { mutableStateOf((if (item.received.centavos > 0) item.remaining else item.amount).toDigits()) }
     var updateRate by remember { mutableStateOf(true) }
     AlertDialog(
         onDismissRequest = onDismiss,
@@ -205,6 +210,10 @@ private fun ItemDialog(
             DialogColumn {
                 item.usdAmount?.let { LabeledText("Valor", it.formatUsd()) } ?: LabeledMoney("Valor", item.amount)
                 LabeledText("Fecha", formatShortDate(item.date))
+                if (!item.paid && item.received.centavos > 0) {
+                    LabeledMoney(if (income) "Ya recibiste" else "Ya abonaste", item.received)
+                    LabeledMoney("Falta", item.remaining)
+                }
                 if (item.paid) {
                     Note(
                         (if (income) "Ya lo marcaste como recibido este mes." else "Ya lo marcaste como pagado este mes.") +
@@ -242,6 +251,11 @@ private fun ItemDialog(
         },
         dismissButton = {
             Row {
+                // Llegó o pagaste solo una parte: se abona y el resto queda pendiente.
+                val typed = paidDigits.toLongOrNull()?.let { Money.ofPesos(it) }
+                if (!item.paid && !usd && accountId != null && typed != null && typed.centavos > 0 && typed < item.remaining) {
+                    TextButton(onClick = { onPayPart(accountId, paidDigits) }) { Text("Solo abonar") }
+                }
                 TextButton(onClick = onEdit) { Text("Editar") }
                 TextButton(onClick = onDismiss) { Text("Cerrar") }
             }

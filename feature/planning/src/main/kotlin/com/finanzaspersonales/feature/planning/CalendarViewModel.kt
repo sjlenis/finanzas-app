@@ -111,6 +111,14 @@ class CalendarViewModel @Inject constructor(
         }.onSuccess { onDone() }.onFailure { _message.value = it.message }
     }
 
+    /** Abona solo una parte del pago o ingreso fijo de este mes. */
+    fun payPart(id: Long, accountId: Long?, digits: String, onDone: () -> Unit) = viewModelScope.launch {
+        runCatching {
+            val amount = requireNotNull(digits.toLongOrNull()?.takeIf { it > 0 }) { "Escribe el valor" }
+            planning.payObligationPart(id, month, accountId, Money.ofPesos(amount))
+        }.onSuccess { onDone() }.onFailure { _message.value = it.message }
+    }
+
     fun setUsdRate(digits: String, onDone: () -> Unit) = viewModelScope.launch {
         runCatching {
             val rate = requireNotNull(digits.toLongOrNull()?.takeIf { it > 0 }) { "Escribe cuántos pesos vale un dólar" }

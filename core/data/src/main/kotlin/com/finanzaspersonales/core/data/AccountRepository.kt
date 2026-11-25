@@ -105,6 +105,7 @@ class AccountRepository @Inject constructor(
         accountDao.detachTransferCounterparts(id, account.name)
         accountDao.clearDebtPaymentLinks(id)
         accountDao.clearObligationPaymentLinks(id)
+        accountDao.clearObligationPartialLinks(id)
         accountDao.clearChatLinks(id)
         accountDao.clearObligationAccount(id)
         accountDao.deleteTransactionsOf(id)

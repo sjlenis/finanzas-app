@@ -62,7 +62,7 @@ class FinancialAssistant @Inject constructor(
             categoryNames = data.categories.map { it.name },
         )
         return when (val result = parser.parse(message, context)) {
-            is ParseResult.Entry -> proposal(result.draft, data)
+            is ParseResult.Entry -> proposal(result.draft, data, message)
             is ParseResult.Saving -> savingProposal(result)
             is ParseResult.Query -> AssistantReply(answer(result.query, data))
             ParseResult.Help -> AssistantReply(HELP)
@@ -75,8 +75,8 @@ class FinancialAssistant @Inject constructor(
 
     // ------------------------------------------------------------------ registros
 
-    private fun proposal(draft: EntryDraft, data: AssistantData): AssistantReply {
-        val card = resolve(draft, data)
+    private suspend fun proposal(draft: EntryDraft, data: AssistantData, message: String): AssistantReply {
+        val card = withObligation(resolve(draft, data), message)
         if (card.accountId == null) {
             return AssistantReply(
                 if (card.kind == DraftKind.WITHDRAWAL) "Para registrar un retiro necesito una cuenta bancaria activa y una de efectivo."
@@ -86,7 +86,53 @@ class FinancialAssistant @Inject constructor(
         return if (card.amount == null) {
             AssistantReply("¿Cuánto fue? Escríbeme solo el valor, por ejemplo 15.000.", card, CardStatus.AWAITING_AMOUNT)
         } else {
-            AssistantReply("Esto es lo que entendí. Revísalo antes de guardar:", card, CardStatus.PENDING)
+            val intro = card.obligationName?.let { name ->
+                "Esto es lo que entendí. Parece parte de tu ${if (card.kind == DraftKind.INCOME) "ingreso" else "pago"} fijo \"$name\", " +
+                    "así que lo abono ahí. Si no es así, toca \"No abonar\":"
+            } ?: "Esto es lo que entendí. Revísalo antes de guardar:"
+            AssistantReply(intro, card, CardStatus.PENDING)
+        }
+    }
+
+    /**
+     * Si el ingreso o gasto parece ser (parte de) un pago o ingreso fijo del calendario que
+     * aún no está completo este mes, lo propone en la tarjeta. Busca el nombre del pago
+     * fijo en el mensaje ("me llegaron 150 mil del transporte" -> "Transporte 2ª quincena").
+     */
+    suspend fun withObligation(card: DraftCard, message: String): DraftCard {
+        if (card.kind != DraftKind.INCOME && card.kind != DraftKind.EXPENSE) return card
+        val wantIncome = card.kind == DraftKind.INCOME
+        val overview = overview.observe().first()
+        val pendingIds = overview.monthItems
+            .filter { !it.paid && it.usdAmount == null && it.type == (if (wantIncome) com.finanzaspersonales.core.data.UpcomingType.INCOME else com.finanzaspersonales.core.data.UpcomingType.OBLIGATION) }
+            .associateBy { it.id }
+        if (pendingIds.isEmpty()) return card
+        val text = plain(message + " " + card.description)
+        val words = Regex("[a-z0-9]+").findAll(text).map { it.value }.toSet()
+        val candidates = planning.observeObligations().first().filter { o ->
+            o.id in pendingIds && plain(o.name).split(Regex("[^a-z0-9]+")).any { w -> w.length >= 4 && w !in GENERIC_WORDS && w in words }
+        }
+        val pick = candidates.minByOrNull { o ->
+            val date = pendingIds.getValue(o.id).date
+            // Primero el más próximo que aún no pasó; si todos pasaron, el más antiguo.
+            if (date.isBefore(today())) date.toEpochDay() + 100_000 else date.toEpochDay()
+        } ?: return card
+        val item = pendingIds.getValue(pick.id)
+        return card.copy(obligationId = pick.id, obligationName = pick.name, obligationRemaining = item.remaining)
+    }
+
+    /** Después de guardar: abona el movimiento al pago fijo y dice cuánto falta. */
+    suspend fun applyObligation(card: DraftCard, transactionId: Long?): String? {
+        val id = card.obligationId ?: return null
+        val amount = card.amount ?: return null
+        val month = java.time.YearMonth.from(today())
+        val total = planning.addObligationPartial(id, month, amount, transactionId)
+        val obligation = planning.observeObligations().first().firstOrNull { it.id == id } ?: return null
+        val missing = obligation.amount - total
+        return if (missing.centavos <= 0) {
+            "Con esto ${obligation.name} queda ${if (obligation.isIncome) "recibido" else "pagado"} completo este mes."
+        } else {
+            "Abonado a ${obligation.name}: llevas ${total.formatCop()} de ${obligation.amount.formatCop()}, faltan ${missing.formatCop()}."
         }
     }
 
@@ -338,7 +384,7 @@ class FinancialAssistant @Inject constructor(
             append("Te quedan ${pending.size} ${if (pending.size == 1) "pago" else "pagos"} este mes por ${o.money.obligations.formatCop()}:")
             pending.forEach { p ->
                 val late = if (p.date.isBefore(o.today)) " (vencido)" else ""
-                append("\n• ${p.name}: ${p.amount.formatCop()} el ${formatShortDate(p.date)}$late")
+                append("\n• ${p.name}: ${p.remaining.formatCop()} el ${formatShortDate(p.date)}$late")
             }
         }
     }
@@ -435,6 +481,9 @@ class FinancialAssistant @Inject constructor(
         const val WELCOME = "Hola. Escríbeme tus gastos e ingresos como se los contarías a alguien, " +
             "por ejemplo \"Hoy gasté 15.000 en almuerzo\". Te muestro una tarjeta y solo guardo cuando confirmes. " +
             "Todo se procesa en tu teléfono."
+
+        /** Palabras que no sirven para reconocer un pago fijo por su nombre. */
+        private val GENERIC_WORDS = setOf("quincena", "pago", "pagos", "ingreso", "ingresos", "fijo", "mensual", "cuota", "primera", "segunda", "dolares", "pesos")
 
         const val HELP = "Puedo registrar y responder cosas como:\n" +
             "• \"Gasté 18 mil en almuerzo con Nequi\"\n" +

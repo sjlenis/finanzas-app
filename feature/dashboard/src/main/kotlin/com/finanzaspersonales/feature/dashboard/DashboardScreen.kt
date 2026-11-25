@@ -144,7 +144,7 @@ fun DashboardScreen(
                                     color = if (late) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.onSurfaceVariant,
                                 )
                             }
-                            MoneyText(p.amount)
+                            MoneyText(p.remaining)
                         }
                     }
                     LabelRow("Saldo estimado a fin de mes", o.projectedEndOfMonth, MoneyTone.Signed)

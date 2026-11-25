@@ -225,4 +225,32 @@ class FinancialAssistantTest {
         planning.emptyGoal(fund.id)
         assertEquals(Money.ofPesos(0), planning.observeGoals().first().single { it.isEmergencyFund }.saved)
     }
+
+    @Test
+    fun ingresoParcialSeAbonaAlIngresoFijo() = runTest {
+        val d = data(defaultName = "Nequi")
+        val month = java.time.YearMonth.of(2026, 11)
+        planning.saveObligation(null, "Transporte primera quincena", Money.ofPesos(100_000), 15, isIncome = true, categoryId = null, accountId = null, active = true)
+        val second = planning.saveObligation(null, "Transporte segunda quincena", Money.ofPesos(100_000), 30, isIncome = true, categoryId = null, accountId = null, active = true)
+        val first = planning.observeObligations().first().first { it.name.startsWith("Transporte primera") }.id
+        planning.markObligationPaid(first, month, accountId = null)
+
+        val reply = assistant.reply("Me ingresaron 40 mil del transporte", d)
+        val card = requireNotNull(reply.card)
+        assertEquals(DraftKind.INCOME, card.kind)
+        assertEquals(second, card.obligationId)
+
+        val txId = assistant.save(card, d)
+        val note = assistant.applyObligation(card, txId)
+        assertTrue(note.orEmpty().contains("faltan"))
+        assertEquals(Money.ofPesos(40_000), balance("Nequi"))
+        assertEquals(Money.ofPesos(40_000), planning.observeObligationPartials(month).first()[second])
+        assertTrue(second !in planning.observePaidObligations(month).first())
+
+        // El resto completa el mes.
+        val rest = requireNotNull(assistant.reply("Me ingresaron 60 mil del transporte", d).card)
+        assertEquals(second, rest.obligationId)
+        assistant.applyObligation(rest, assistant.save(rest, d))
+        assertTrue(second in planning.observePaidObligations(month).first())
+    }
 }
