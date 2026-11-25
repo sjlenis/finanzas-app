@@ -45,6 +45,10 @@ sealed interface FinanceQuery {
     data class CanAfford(val price: com.finanzaspersonales.core.model.Money?) : FinanceQuery
     /** Consejos y análisis de hábitos. */
     data object Advice : FinanceQuery
+    /** Activos menos deudas. */
+    data object NetWorth : FinanceQuery
+    /** Este mes frente al anterior. */
+    data object MonthComparison : FinanceQuery
 }
 
 sealed interface ParseResult {

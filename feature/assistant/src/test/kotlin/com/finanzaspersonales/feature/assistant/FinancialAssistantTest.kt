@@ -62,6 +62,7 @@ class FinancialAssistantTest {
         assistant = FinancialAssistant(
             transactions, planning, overview,
             com.finanzaspersonales.core.data.InsightsRepository(transactions, planning, overview, clock),
+            com.finanzaspersonales.core.data.StatisticsRepository(db, accounts, transactions, clock),
             clock,
         )
     }
@@ -193,5 +194,15 @@ class FinancialAssistantTest {
     fun consejosSinDatosNoInventa() = runTest {
         val answer = assistant.reply("Dame consejos", data()).text
         assertTrue(answer, answer.contains("pocos movimientos"))
+    }
+
+    @Test
+    fun patrimonioYComparacionMensual() = runTest {
+        val d = data("Nequi")
+        assistant.save(requireNotNull(assistant.reply("Me pagaron 400 mil", d).card), d)
+        val worth = assistant.reply("¿Cuál es mi patrimonio?", d).text
+        assertTrue(worth, worth.contains("\$400.000"))
+        val compare = assistant.reply("¿Cómo voy comparado con el mes pasado?", d).text
+        assertTrue(compare, compare.contains("No tengo movimientos del mes pasado"))
     }
 }

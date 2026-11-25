@@ -51,6 +51,7 @@ fun ProfileRoute(
     onEmergencyFund: () -> Unit = {},
     onCalendar: () -> Unit = {},
     onInsights: () -> Unit = {},
+    onStatistics: () -> Unit = {},
 ) {
     val sections = listOf(
         Section("Cuentas", Icons.Outlined.AccountBalance, "Saldos, conciliación e historial por cuenta", onAccounts),
@@ -63,7 +64,7 @@ fun ProfileRoute(
         Section("Fondo de emergencia", Icons.Outlined.Shield, "De 3 a 6 meses de gastos esenciales", onEmergencyFund),
         Section("Calendario de pagos", Icons.Outlined.CalendarMonth, "Pagos fijos, cuotas e ingresos del mes", onCalendar),
         Section("Análisis y consejos", Icons.Outlined.Lightbulb, "Recomendaciones, gastos hormiga y ¿puedo comprarlo?", onInsights),
-        Section("Estadísticas", Icons.Outlined.BarChart, "Llega en la segunda entrega de la Fase 7"),
+        Section("Estadísticas", Icons.Outlined.BarChart, "Gráficos, flujo de caja y patrimonio neto", onStatistics),
     )
     val context = LocalContext.current
     // Versión instalada, para confirmar que se actualizó al APK correcto.

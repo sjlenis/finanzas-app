@@ -161,6 +161,8 @@ class MessageParser {
         return when {
             Regex("\\b(puedo comprar|me alcanza|alcanzo a comprar|puedo darme|deberia comprar|me conviene comprar|puedo pagar algo)\\b").containsMatchIn(text) ->
                 FinanceQuery.CanAfford(AmountExtractor.find(text)?.money?.takeIf { it.centavos > 0 })
+            Regex("\\b(patrimonio|cuanto valgo|activos|cuanto tengo menos lo que debo)\\b").containsMatchIn(text) -> FinanceQuery.NetWorth
+            Regex("\\b(mes pasado|mes anterior|comparado|comparar|compara)\\b").containsMatchIn(text) -> FinanceQuery.MonthComparison
             Regex("\\b(consejos?|recomendaciones|recomiendame|como voy|como estoy|como van mis finanzas|analisis|analiza|gastos hormiga|en que puedo ahorrar|como (puedo )?ahorrar)\\b").containsMatchIn(text) ->
                 FinanceQuery.Advice
             Regex("\\b(puedo gastar|me queda para gastar|cuanto puedo)\\b").containsMatchIn(text) -> FinanceQuery.WeeklyAllowance

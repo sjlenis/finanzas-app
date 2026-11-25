@@ -44,10 +44,11 @@ fun DashboardRoute(
     onOpenCalendar: () -> Unit = {},
     onOpenBudgets: () -> Unit = {},
     onOpenInsights: () -> Unit = {},
+    onOpenStatistics: () -> Unit = {},
     viewModel: DashboardViewModel = hiltViewModel(),
 ) {
     val state by viewModel.state.collectAsStateWithLifecycle()
-    DashboardScreen(state, onOpenAccount, onOpenSecurity, onOpenPending, onOpenCalendar, onOpenBudgets, onOpenInsights)
+    DashboardScreen(state, onOpenAccount, onOpenSecurity, onOpenPending, onOpenCalendar, onOpenBudgets, onOpenInsights, onOpenStatistics)
 }
 
 /**
@@ -63,6 +64,7 @@ fun DashboardScreen(
     onOpenCalendar: () -> Unit = {},
     onOpenBudgets: () -> Unit = {},
     onOpenInsights: () -> Unit = {},
+    onOpenStatistics: () -> Unit = {},
 ) {
     if (state.loading) {
         Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) { CircularProgressIndicator() }
@@ -201,6 +203,24 @@ fun DashboardScreen(
                         style = MaterialTheme.typography.bodySmall,
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                     )
+                }
+            }
+        }
+        if (state.months.any { it.income.centavos != 0L || it.expense.centavos != 0L }) {
+            item {
+                FinanceCard(title = "Ingresos frente a gastos") {
+                    com.finanzaspersonales.core.designsystem.component.BarChart(
+                        groups = state.months.map {
+                            com.finanzaspersonales.core.designsystem.component.BarGroup(
+                                it.month.format(java.time.format.DateTimeFormatter.ofPattern("MMM", java.util.Locale.forLanguageTag("es-CO")))
+                                    .removeSuffix(".").replaceFirstChar { c -> c.uppercase() },
+                                listOf(it.income, it.expense),
+                            )
+                        },
+                        seriesNames = listOf("Ingresos", "Gastos"),
+                        height = 140.dp,
+                    )
+                    TextButton(onClick = onOpenStatistics) { Text("Ver estadísticas") }
                 }
             }
         }

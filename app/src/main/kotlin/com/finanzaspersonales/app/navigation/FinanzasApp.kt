@@ -51,6 +51,7 @@ import com.finanzaspersonales.feature.planning.DebtsRoute
 import com.finanzaspersonales.feature.planning.EmergencyFundRoute
 import com.finanzaspersonales.feature.planning.GoalsRoute
 import com.finanzaspersonales.feature.planning.InsightsRoute
+import com.finanzaspersonales.feature.planning.StatisticsRoute
 import androidx.navigation.NavType
 import androidx.navigation.navArgument
 
@@ -73,6 +74,7 @@ object Routes {
     const val EMERGENCY = "fondo-emergencia"
     const val CALENDAR = "calendario"
     const val INSIGHTS = "analisis"
+    const val STATISTICS = "estadisticas"
 }
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -108,6 +110,7 @@ fun FinanzasApp() {
                     onOpenCalendar = { navController.navigate(Routes.CALENDAR) },
                     onOpenBudgets = { navController.navigateToTab(TopLevelDestination.BUDGETS) },
                     onOpenInsights = { navController.navigate(Routes.INSIGHTS) },
+                    onOpenStatistics = { navController.navigate(Routes.STATISTICS) },
                 )
             }
             composable(TopLevelDestination.TRANSACTIONS.route) {
@@ -127,6 +130,7 @@ fun FinanzasApp() {
                     onEmergencyFund = { navController.navigate(Routes.EMERGENCY) },
                     onCalendar = { navController.navigate(Routes.CALENDAR) },
                     onInsights = { navController.navigate(Routes.INSIGHTS) },
+                    onStatistics = { navController.navigate(Routes.STATISTICS) },
                 )
             }
             composable(
@@ -153,6 +157,7 @@ fun FinanzasApp() {
             composable(Routes.GOALS) { GoalsRoute(onBack = back) }
             composable(Routes.EMERGENCY) { EmergencyFundRoute(onBack = back) }
             composable(Routes.INSIGHTS) { InsightsRoute(onBack = back) }
+            composable(Routes.STATISTICS) { StatisticsRoute(onBack = back) }
             composable(Routes.CALENDAR) { CalendarRoute(onBack = back, onOpenDebt = { navController.navigate(Routes.debt(it)) }) }
         }
     }

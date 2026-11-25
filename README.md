@@ -13,7 +13,7 @@ Sin servidores, sin cuentas en la nube y con mantenimiento de $0.
 | 4 | Asistente financiero (chat, intérprete local sin internet) | Hecha |
 | 5 | Detección de notificaciones Nequi / Bancolombia | Hecha (se afina con muestras reales) |
 | 6 | Presupuestos, deudas, fondo de emergencia, metas, calendario | Hecha |
-| 7 | Recomendaciones e inteligencia financiera | En construcción (parte A: análisis, consejos y simulador de compras) |
+| 7 | Recomendaciones e inteligencia financiera | En prueba |
 | 8 | Pruebas finales y APK firmado | Pendiente |
 
 Las pantallas de funciones aún no construidas lo indican claramente; la app nunca muestra cifras de ejemplo.
