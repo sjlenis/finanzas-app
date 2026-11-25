@@ -97,4 +97,6 @@ data class FinancialProfile(
     val debtPayments: Money,
     /** Ingreso promedio menos gasto promedio menos cuotas de deudas. */
     val monthlySurplus: Money,
+    /** true si los promedios salen de meses completos (y no solo del mes en curso). */
+    val hasCompleteMonths: Boolean = false,
 )

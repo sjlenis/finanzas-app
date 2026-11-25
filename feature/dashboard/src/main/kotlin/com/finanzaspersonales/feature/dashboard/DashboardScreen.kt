@@ -43,10 +43,11 @@ fun DashboardRoute(
     onOpenPending: () -> Unit,
     onOpenCalendar: () -> Unit = {},
     onOpenBudgets: () -> Unit = {},
+    onOpenInsights: () -> Unit = {},
     viewModel: DashboardViewModel = hiltViewModel(),
 ) {
     val state by viewModel.state.collectAsStateWithLifecycle()
-    DashboardScreen(state, onOpenAccount, onOpenSecurity, onOpenPending, onOpenCalendar, onOpenBudgets)
+    DashboardScreen(state, onOpenAccount, onOpenSecurity, onOpenPending, onOpenCalendar, onOpenBudgets, onOpenInsights)
 }
 
 /**
@@ -61,6 +62,7 @@ fun DashboardScreen(
     onOpenPending: () -> Unit = {},
     onOpenCalendar: () -> Unit = {},
     onOpenBudgets: () -> Unit = {},
+    onOpenInsights: () -> Unit = {},
 ) {
     if (state.loading) {
         Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) { CircularProgressIndicator() }
@@ -145,6 +147,21 @@ fun DashboardScreen(
                     }
                     LabelRow("Saldo estimado a fin de mes", o.projectedEndOfMonth, MoneyTone.Signed)
                     TextButton(onClick = onOpenCalendar) { Text("Ver calendario") }
+                }
+            }
+        }
+        if (state.insights.isNotEmpty()) {
+            item {
+                FinanceCard(title = "Consejos para ti") {
+                    state.insights.take(2).forEach { tip ->
+                        Text(
+                            tip.title,
+                            style = MaterialTheme.typography.titleSmall,
+                            color = if (tip.severity == com.finanzaspersonales.engine.finance.InsightSeverity.ALERT) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.onSurface,
+                        )
+                        Text(tip.body, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    }
+                    TextButton(onClick = onOpenInsights) { Text(if (state.insights.size > 2) "Ver los ${state.insights.size} consejos" else "Ver análisis") }
                 }
             }
         }

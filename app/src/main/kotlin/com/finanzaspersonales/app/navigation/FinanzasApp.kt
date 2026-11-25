@@ -50,6 +50,7 @@ import com.finanzaspersonales.feature.planning.DebtPlanRoute
 import com.finanzaspersonales.feature.planning.DebtsRoute
 import com.finanzaspersonales.feature.planning.EmergencyFundRoute
 import com.finanzaspersonales.feature.planning.GoalsRoute
+import com.finanzaspersonales.feature.planning.InsightsRoute
 import androidx.navigation.NavType
 import androidx.navigation.navArgument
 
@@ -71,6 +72,7 @@ object Routes {
     const val GOALS = "metas"
     const val EMERGENCY = "fondo-emergencia"
     const val CALENDAR = "calendario"
+    const val INSIGHTS = "analisis"
 }
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -105,6 +107,7 @@ fun FinanzasApp() {
                     onOpenPending = { navController.navigate(Routes.PENDING) },
                     onOpenCalendar = { navController.navigate(Routes.CALENDAR) },
                     onOpenBudgets = { navController.navigateToTab(TopLevelDestination.BUDGETS) },
+                    onOpenInsights = { navController.navigate(Routes.INSIGHTS) },
                 )
             }
             composable(TopLevelDestination.TRANSACTIONS.route) {
@@ -123,6 +126,7 @@ fun FinanzasApp() {
                     onGoals = { navController.navigate(Routes.GOALS) },
                     onEmergencyFund = { navController.navigate(Routes.EMERGENCY) },
                     onCalendar = { navController.navigate(Routes.CALENDAR) },
+                    onInsights = { navController.navigate(Routes.INSIGHTS) },
                 )
             }
             composable(
@@ -148,6 +152,7 @@ fun FinanzasApp() {
             composable(Routes.DEBT_PLAN) { DebtPlanRoute(onBack = back) }
             composable(Routes.GOALS) { GoalsRoute(onBack = back) }
             composable(Routes.EMERGENCY) { EmergencyFundRoute(onBack = back) }
+            composable(Routes.INSIGHTS) { InsightsRoute(onBack = back) }
             composable(Routes.CALENDAR) { CalendarRoute(onBack = back, onOpenDebt = { navController.navigate(Routes.debt(it)) }) }
         }
     }

@@ -220,4 +220,26 @@ class PlanningRepositoryTest {
         assertEquals(pesos(53_100), pagado.monthItems.single().amount)
         assertTrue(pagado.pending.isEmpty())
     }
+
+    @Test
+    fun asesorDetectaGastosHormigaYSimulaCompras() = runTest {
+        val nequi = accountId("Nequi")
+        transactions.saveManual(null, com.finanzaspersonales.core.model.ManualEntryType.INCOME, pesos(1_000_000), nequi, null, "Salario", now, null)
+        (1..6).forEach { day ->
+            transactions.saveManual(
+                null, com.finanzaspersonales.core.model.ManualEntryType.EXPENSE, pesos(5_000), nequi, null, "Café",
+                now.minusSeconds(day * 86_400L), null,
+            )
+        }
+        val overview = OverviewRepository(accounts, planning, transactions, newPrefs(), clock)
+        val insights = InsightsRepository(transactions, planning, overview, clock)
+        val report = insights.report()
+        assertEquals(6, report.expensesAnalyzed)
+        assertEquals(pesos(30_000), report.ants!!.total)
+        assertTrue(report.insights.any { it.kind == com.finanzaspersonales.engine.finance.InsightKind.ANT })
+
+        val buy = insights.simulatePurchase(pesos(200_000))
+        assertEquals(pesos(970_000), buy.available)
+        assertEquals(com.finanzaspersonales.engine.finance.PurchaseVerdict.YES, buy.verdict)
+    }
 }

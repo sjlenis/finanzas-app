@@ -371,7 +371,7 @@ class PlanningRepository @Inject constructor(
             val expense = Money(used.sumOf { it.expenseCentavos } / n)
             val essential = Money(used.sumOf { it.essentialCentavos } / n)
             val debtPayments = debts.filter { it.status == DebtStatus.ACTIVE }.map { it.monthlyPayment }.sum()
-            FinancialProfile(used.size, income, expense, essential, debtPayments, income - expense - debtPayments)
+            FinancialProfile(used.size, income, expense, essential, debtPayments, income - expense - debtPayments, complete.isNotEmpty())
         }
     }
 

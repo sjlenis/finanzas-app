@@ -149,7 +149,7 @@ class MessageParser {
 
     private fun looksLikeQuestion(original: String, text: String): Boolean =
         original.contains('?') || original.contains('¿') ||
-            Regex("^(cuanto|cuanta|cuales|cual|como|que|en que|tengo|dime|muestrame|resumen)\\b").containsMatchIn(text)
+            Regex("^(cuanto|cuanta|cuales|cual|como|que|en que|tengo|dime|muestrame|resumen|puedo|me alcanza|alcanzo|dame|consejos?|recomiendame|recomendaciones|deberia|me conviene)\\b").containsMatchIn(text)
 
     private fun parseQuery(text: String, context: ParseContext): FinanceQuery? {
         val period = when {
@@ -159,6 +159,10 @@ class MessageParser {
             else -> Period.MONTH
         }
         return when {
+            Regex("\\b(puedo comprar|me alcanza|alcanzo a comprar|puedo darme|deberia comprar|me conviene comprar|puedo pagar algo)\\b").containsMatchIn(text) ->
+                FinanceQuery.CanAfford(AmountExtractor.find(text)?.money?.takeIf { it.centavos > 0 })
+            Regex("\\b(consejos?|recomendaciones|recomiendame|como voy|como estoy|como van mis finanzas|analisis|analiza|gastos hormiga|en que puedo ahorrar|como (puedo )?ahorrar)\\b").containsMatchIn(text) ->
+                FinanceQuery.Advice
             Regex("\\b(puedo gastar|me queda para gastar|cuanto puedo)\\b").containsMatchIn(text) -> FinanceQuery.WeeklyAllowance
             Regex("\\b(obligaciones|proximos pagos|pagos pendientes|que tengo que pagar|que debo pagar|proximas cuotas)\\b").containsMatchIn(text) ->
                 FinanceQuery.UpcomingPayments

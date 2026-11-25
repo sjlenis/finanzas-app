@@ -11,9 +11,9 @@ Sin servidores, sin cuentas en la nube y con mantenimiento de $0.
 | 2 | Proyecto Android, tema, navegación, Room cifrado | Hecha |
 | 3 | Cuentas, movimientos, categorías, transferencias, dashboard | Hecha |
 | 4 | Asistente financiero (chat, intérprete local sin internet) | Hecha |
-| 5 | Detección de notificaciones Nequi / Bancolombia | En prueba |
-| 6 | Presupuestos, deudas, fondo de emergencia, metas, calendario | En prueba |
-| 7 | Recomendaciones e inteligencia financiera | Pendiente |
+| 5 | Detección de notificaciones Nequi / Bancolombia | Hecha (se afina con muestras reales) |
+| 6 | Presupuestos, deudas, fondo de emergencia, metas, calendario | Hecha |
+| 7 | Recomendaciones e inteligencia financiera | En construcción (parte A: análisis, consejos y simulador de compras) |
 | 8 | Pruebas finales y APK firmado | Pendiente |
 
 Las pantallas de funciones aún no construidas lo indican claramente; la app nunca muestra cifras de ejemplo.
