@@ -43,6 +43,12 @@ import com.finanzaspersonales.feature.accounts.AccountDetailRoute
 import com.finanzaspersonales.feature.settings.SecuritySettingsRoute
 import com.finanzaspersonales.feature.settings.NotificationSettingsRoute
 import com.finanzaspersonales.feature.transactions.PendingRoute
+import com.finanzaspersonales.feature.planning.DebtDetailRoute
+import com.finanzaspersonales.feature.planning.DebtDetailViewModel
+import com.finanzaspersonales.feature.planning.DebtPlanRoute
+import com.finanzaspersonales.feature.planning.DebtsRoute
+import com.finanzaspersonales.feature.planning.EmergencyFundRoute
+import com.finanzaspersonales.feature.planning.GoalsRoute
 import androidx.navigation.NavType
 import androidx.navigation.navArgument
 
@@ -57,6 +63,12 @@ object Routes {
     const val SECURITY = "seguridad"
     const val NOTIFICATIONS = "notificaciones"
     const val PENDING = "por-revisar"
+    const val DEBTS = "deudas"
+    const val DEBT = "deuda/{debtId}"
+    fun debt(id: Long) = "deuda/$id"
+    const val DEBT_PLAN = "plan-deudas"
+    const val GOALS = "metas"
+    const val EMERGENCY = "fondo-emergencia"
 }
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -110,6 +122,9 @@ fun FinanzasApp() {
                     onSecurity = { navController.navigate(Routes.SECURITY) },
                     onNotifications = { navController.navigate(Routes.NOTIFICATIONS) },
                     onPending = { navController.navigate(Routes.PENDING) },
+                    onDebts = { navController.navigate(Routes.DEBTS) },
+                    onGoals = { navController.navigate(Routes.GOALS) },
+                    onEmergencyFund = { navController.navigate(Routes.EMERGENCY) },
                 )
             }
             composable(
@@ -126,6 +141,15 @@ fun FinanzasApp() {
             composable(Routes.SECURITY) { SecuritySettingsRoute(onBack = back) }
             composable(Routes.NOTIFICATIONS) { NotificationSettingsRoute(onBack = back) }
             composable(Routes.PENDING) { PendingRoute(onBack = back, onEdit = openEntry) }
+            composable(Routes.DEBTS) {
+                DebtsRoute(onBack = back, onOpen = { navController.navigate(Routes.debt(it)) }, onPlan = { navController.navigate(Routes.DEBT_PLAN) })
+            }
+            composable(Routes.DEBT, arguments = listOf(navArgument(DebtDetailViewModel.ARG_DEBT_ID) { type = NavType.LongType })) {
+                DebtDetailRoute(onBack = back)
+            }
+            composable(Routes.DEBT_PLAN) { DebtPlanRoute(onBack = back) }
+            composable(Routes.GOALS) { GoalsRoute(onBack = back) }
+            composable(Routes.EMERGENCY) { EmergencyFundRoute(onBack = back) }
         }
     }
 }

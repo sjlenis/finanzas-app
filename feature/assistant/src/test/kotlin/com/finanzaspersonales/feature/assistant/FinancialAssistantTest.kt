@@ -54,7 +54,7 @@ class FinancialAssistantTest {
         accounts = AccountRepository(db, clock)
         categories = CategoryRepository(db)
         transactions = TransactionRepository(db, clock)
-        assistant = FinancialAssistant(transactions, clock)
+        assistant = FinancialAssistant(transactions, com.finanzaspersonales.core.data.PlanningRepository(db, clock), clock)
     }
 
     @After
@@ -136,9 +136,9 @@ class FinancialAssistantTest {
     }
 
     @Test
-    fun lasConsultasDeFase6NoInventanDatos() = runTest {
+    fun proximosPagosSinDeudasNoInventaDatos() = runTest {
         val answer = assistant.reply("¿Cuáles son mis próximos pagos?", data()).text
-        assertTrue(answer, answer.contains("Fase 6"))
+        assertTrue(answer, answer.contains("No tienes cuotas"))
     }
 
     @Test

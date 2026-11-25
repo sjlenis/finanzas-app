@@ -19,6 +19,7 @@ import com.finanzaspersonales.engine.nlp.FinanceQuery
 import com.finanzaspersonales.engine.nlp.MessageParser
 import com.finanzaspersonales.engine.nlp.ParseContext
 import com.finanzaspersonales.engine.nlp.ParseResult
+import kotlinx.coroutines.flow.first
 import java.time.Clock
 import java.time.LocalDate
 import javax.inject.Inject
@@ -44,6 +45,7 @@ data class AssistantReply(val text: String, val card: DraftCard? = null, val sta
  */
 class FinancialAssistant @Inject constructor(
     private val transactions: TransactionRepository,
+    private val planning: com.finanzaspersonales.core.data.PlanningRepository,
     private val clock: Clock,
 ) {
     private val parser = MessageParser()
@@ -236,10 +238,44 @@ class FinancialAssistant @Inject constructor(
                 "Todavía no puedo decirte cuánto puedes gastar: para eso necesito tus presupuestos y obligaciones, " +
                     "que llegan en la Fase 6. Lo que sí sé: esta semana llevas ${week.formatCop()} en gastos."
             }
-            FinanceQuery.UpcomingPayments ->
-                "Aún no tengo registro de obligaciones ni próximos pagos: ese módulo llega en la Fase 6."
-            FinanceQuery.SavingsGoals ->
-                "Las metas de ahorro y el fondo de emergencia llegan en la Fase 6. Todavía no hay metas que mostrar."
+            FinanceQuery.UpcomingPayments -> upcomingDebtPayments(today)
+            FinanceQuery.SavingsGoals -> goalsSummary()
+        }
+    }
+
+    private suspend fun upcomingDebtPayments(today: LocalDate): String {
+        val debts = planning.observeDebts().first()
+            .filter { it.status == com.finanzaspersonales.core.data.DebtStatus.ACTIVE && it.dueDay != null }
+            .sortedBy { d -> nextDue(d.dueDay!!, today) }
+        if (debts.isEmpty()) {
+            return "No tienes cuotas de deudas con día de pago registradas. Agrégalas en Perfil > Deudas. " +
+                "El calendario de otros pagos (arriendo, servicios) llega en la siguiente entrega."
+        }
+        return buildString {
+            append("Tus próximas cuotas:")
+            debts.forEach { d -> append("\n• ${d.name}: ${d.monthlyPayment.formatCop()} el ${formatShortDate(nextDue(d.dueDay!!, today))}") }
+        }
+    }
+
+    private fun nextDue(day: Int, today: LocalDate): LocalDate {
+        val thisMonth = today.withDayOfMonth(minOf(day, today.lengthOfMonth()))
+        if (!thisMonth.isBefore(today)) return thisMonth
+        val next = today.plusMonths(1)
+        return next.withDayOfMonth(minOf(day, next.lengthOfMonth()))
+    }
+
+    private suspend fun goalsSummary(): String {
+        val goals = planning.observeGoals().first()
+        if (goals.isEmpty() || goals.all { it.target.isZero && it.saved.isZero }) {
+            return "Aún no tienes metas de ahorro ni fondo de emergencia. Créalos en Perfil > Metas de ahorro o Fondo de emergencia."
+        }
+        return buildString {
+            append("Así van tus ahorros:")
+            goals.forEach { g ->
+                val pct = if (g.target.centavos > 0) (g.saved.centavos * 100 / g.target.centavos).coerceAtMost(100) else 0
+                append("\n• ${g.name}: ${g.saved.formatCop()}")
+                if (g.target.centavos > 0) append(" de ${g.target.formatCop()} ($pct %)")
+            }
         }
     }
 

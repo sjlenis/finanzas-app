@@ -138,6 +138,35 @@ fun DashboardScreen(
             }
         }
         item { SpendingCard(state) }
+        item {
+            FinanceCard(title = "Deudas y ahorro") {
+                if (!state.hasPlanning) {
+                    Text(
+                        "Registra tus deudas, metas y fondo de emergencia desde Perfil para verlos aquí.",
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                } else {
+                    Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
+                        Text("Total de deudas", style = MaterialTheme.typography.bodyMedium)
+                        MoneyText(state.debtTotal)
+                    }
+                    Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
+                        Text("Ahorrado en metas", style = MaterialTheme.typography.bodyMedium)
+                        MoneyText(state.savedInGoals)
+                    }
+                    Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
+                        Text("Fondo de emergencia", style = MaterialTheme.typography.bodyMedium)
+                        MoneyText(state.emergencySaved)
+                    }
+                    if (state.emergencyTarget.centavos > 0) {
+                        val pct = (state.emergencySaved.centavos * 100 / state.emergencyTarget.centavos).toInt().coerceIn(0, 100)
+                        androidx.compose.material3.LinearProgressIndicator(progress = { pct / 100f }, modifier = Modifier.fillMaxWidth())
+                        Text("$pct % de la meta del fondo", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    }
+                }
+            }
+        }
         items(upcomingSections) { (title, phase) ->
             FinanceCard(title = title) {
                 Text("Disponible en la $phase.", style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
@@ -183,7 +212,5 @@ private fun SpendingCard(state: DashboardUiState) {
 
 private val upcomingSections = listOf(
     "Dinero comprometido y próximos pagos" to "Fase 6",
-    "Deudas" to "Fase 6",
-    "Ahorro y fondo de emergencia" to "Fase 6",
     "Estado de los presupuestos" to "Fase 6",
 )
