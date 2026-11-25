@@ -19,6 +19,7 @@ import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.map
+import kotlinx.coroutines.flow.mapLatest
 import kotlinx.coroutines.flow.stateIn
 import java.time.Clock
 import javax.inject.Inject
@@ -37,12 +38,17 @@ data class DashboardUiState(
     val hasPlanning: Boolean = false,
     /** Dinero realmente disponible, pagos del mes y presupuestos. */
     val overview: com.finanzaspersonales.core.data.CashOverview? = null,
+    /** Las recomendaciones más importantes del asesor. */
+    val insights: List<com.finanzaspersonales.engine.finance.Insight> = emptyList(),
+    /** Ingresos y gastos de los últimos meses para la gráfica de Inicio. */
+    val months: List<com.finanzaspersonales.core.data.MonthTotals> = emptyList(),
 ) {
     /** Dinero en cuentas líquidas (las que cuentan como disponibles). */
     val total: Money get() = accounts.filter { it.isLiquid }.map { it.balance }.sum()
     val cash: Money get() = accounts.filter { it.type == AccountType.CASH }.map { it.balance }.sum()
 }
 
+@OptIn(kotlinx.coroutines.ExperimentalCoroutinesApi::class)
 @HiltViewModel
 class DashboardViewModel @Inject constructor(
     finance: FinanceRepository,
@@ -50,6 +56,8 @@ class DashboardViewModel @Inject constructor(
     transactions: TransactionRepository,
     planning: com.finanzaspersonales.core.data.PlanningRepository,
     overview: com.finanzaspersonales.core.data.OverviewRepository,
+    insights: com.finanzaspersonales.core.data.InsightsRepository,
+    stats: com.finanzaspersonales.core.data.StatisticsRepository,
     security: SecuritySettings,
     clock: Clock,
 ) : ViewModel() {
@@ -68,7 +76,13 @@ class DashboardViewModel @Inject constructor(
         )
     }
 
-    val state: StateFlow<DashboardUiState> = combine(base, planning.observeDebts(), planning.observeGoals(), overview.observe()) { s, debts, goals, o ->
+    val state: StateFlow<DashboardUiState> = combine(
+        base, planning.observeDebts(), planning.observeGoals(), overview.observe(),
+        overview.observe().mapLatest {
+            runCatching { insights.report().insights }.getOrDefault(emptyList()) to
+                runCatching { stats.report().months }.getOrDefault(emptyList())
+        },
+    ) { s, debts, goals, o, (tips, months) ->
         val fund = goals.firstOrNull { it.isEmergencyFund }
         s.copy(
             debtTotal = debts.filter { it.status == com.finanzaspersonales.core.data.DebtStatus.ACTIVE }.map { it.balance }.sum(),
@@ -77,6 +91,8 @@ class DashboardViewModel @Inject constructor(
             emergencyTarget = fund?.target ?: Money.ZERO,
             hasPlanning = debts.isNotEmpty() || goals.isNotEmpty(),
             overview = o,
+            insights = tips,
+            months = months,
         )
     }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), DashboardUiState())
 }

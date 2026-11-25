@@ -55,6 +55,10 @@ data class CashOverview(
     val nextIncome: LocalDate?,
     val weeklyAllowance: Money,
     val weeksUntilHorizon: Int,
+    /** Días hasta el próximo ingreso previsto (o hasta fin de mes si no hay). */
+    val daysUntilIncome: Int,
+    /** Gasto variable diario promedio (sin los pagos fijos del calendario). */
+    val dailyVariableSpending: Money,
     val projectedEndOfMonth: Money,
     val budgets: List<BudgetLine>,
     val profile: FinancialProfile,
@@ -143,6 +147,8 @@ class OverviewRepository @Inject constructor(
                 nextIncome = nextIncome,
                 weeklyAllowance = weekly,
                 weeksUntilHorizon = weeks,
+                daysUntilIncome = ChronoUnit.DAYS.between(today, horizon).toInt().coerceAtLeast(0),
+                dailyVariableSpending = daily,
                 projectedEndOfMonth = Projection.endOfMonth(liquid, expectedIncome, money.obligations, daily, today),
                 budgets = budgetLines.sortedByDescending { it.status.percent },
                 profile = profile,

@@ -8,6 +8,7 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.KeyboardArrowRight
 import androidx.compose.material.icons.outlined.AccountBalance
 import androidx.compose.material.icons.outlined.BarChart
+import androidx.compose.material.icons.outlined.Lightbulb
 import androidx.compose.material.icons.outlined.CalendarMonth
 import androidx.compose.material.icons.outlined.Category
 import androidx.compose.material.icons.outlined.CreditCard
@@ -49,6 +50,8 @@ fun ProfileRoute(
     onGoals: () -> Unit = {},
     onEmergencyFund: () -> Unit = {},
     onCalendar: () -> Unit = {},
+    onInsights: () -> Unit = {},
+    onStatistics: () -> Unit = {},
 ) {
     val sections = listOf(
         Section("Cuentas", Icons.Outlined.AccountBalance, "Saldos, conciliación e historial por cuenta", onAccounts),
@@ -60,7 +63,8 @@ fun ProfileRoute(
         Section("Metas de ahorro", Icons.Outlined.Savings, "Cuánto ahorrar y si te alcanza", onGoals),
         Section("Fondo de emergencia", Icons.Outlined.Shield, "De 3 a 6 meses de gastos esenciales", onEmergencyFund),
         Section("Calendario de pagos", Icons.Outlined.CalendarMonth, "Pagos fijos, cuotas e ingresos del mes", onCalendar),
-        Section("Estadísticas", Icons.Outlined.BarChart, "Llega en la Fase 7"),
+        Section("Análisis y consejos", Icons.Outlined.Lightbulb, "Recomendaciones, gastos hormiga y ¿puedo comprarlo?", onInsights),
+        Section("Estadísticas", Icons.Outlined.BarChart, "Gráficos, flujo de caja y patrimonio neto", onStatistics),
     )
     val context = LocalContext.current
     // Versión instalada, para confirmar que se actualizó al APK correcto.

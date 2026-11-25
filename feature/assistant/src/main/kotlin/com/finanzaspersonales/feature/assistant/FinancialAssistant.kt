@@ -47,6 +47,8 @@ class FinancialAssistant @Inject constructor(
     private val transactions: TransactionRepository,
     private val planning: com.finanzaspersonales.core.data.PlanningRepository,
     private val overview: com.finanzaspersonales.core.data.OverviewRepository,
+    private val insights: com.finanzaspersonales.core.data.InsightsRepository,
+    private val stats: com.finanzaspersonales.core.data.StatisticsRepository,
     private val clock: Clock,
 ) {
     private val parser = MessageParser()
@@ -237,6 +239,10 @@ class FinancialAssistant @Inject constructor(
             FinanceQuery.WeeklyAllowance -> weeklyAllowance(today)
             FinanceQuery.UpcomingPayments -> upcomingPayments()
             FinanceQuery.SavingsGoals -> goalsSummary()
+            is FinanceQuery.CanAfford -> canAfford(query.price)
+            FinanceQuery.Advice -> advice()
+            FinanceQuery.NetWorth -> netWorth()
+            FinanceQuery.MonthComparison -> monthComparison()
         }
     }
 
@@ -271,6 +277,63 @@ class FinancialAssistant @Inject constructor(
                 val late = if (p.date.isBefore(o.today)) " (vencido)" else ""
                 append("\n• ${p.name}: ${p.amount.formatCop()} el ${formatShortDate(p.date)}$late")
             }
+        }
+    }
+
+    private suspend fun canAfford(price: com.finanzaspersonales.core.model.Money?): String {
+        if (price == null) return "¿Cuánto cuesta? Escríbeme por ejemplo: \"¿Puedo comprar un celular de 1.200.000?\""
+        val a = insights.simulatePurchase(price)
+        val verdict = when (a.verdict) {
+            com.finanzaspersonales.engine.finance.PurchaseVerdict.YES -> "Sí, puedes comprarlo sin afectar tus pagos ni tus ahorros."
+            com.finanzaspersonales.engine.finance.PurchaseVerdict.CAREFUL -> "Puedes, pero quedarías muy justo."
+            com.finanzaspersonales.engine.finance.PurchaseVerdict.WAIT -> "Mejor espera: hoy no te alcanza sin afectar tus pagos o tu día a día."
+        }
+        return buildString {
+            append("${price.formatCop()}: $verdict")
+            a.reasons.forEach { append("\n• $it") }
+        }
+    }
+
+    private suspend fun netWorth(): String {
+        val n = stats.report().netWorth
+        return buildString {
+            append("Tu patrimonio neto es ${n.net.formatCop()}: tienes ${n.assets.formatCop()} en tus cuentas y debes ${n.liabilities.formatCop()}.")
+            if (n.debts.isNotEmpty()) n.debts.forEach { append("\n• ${it.first}: ${it.second.formatCop()}") }
+            else append(" No tienes deudas registradas.")
+        }
+    }
+
+    private suspend fun monthComparison(): String {
+        val r = stats.report(monthCount = 2)
+        val (last, current) = r.months
+        if (last.expense.isZero && last.income.isZero) {
+            return "No tengo movimientos del mes pasado para comparar. Este mes llevas ${current.expense.formatCop()} en gastos y ${current.income.formatCop()} en ingresos."
+        }
+        val diff = current.expense - last.expense
+        return buildString {
+            append("Este mes llevas ${current.expense.formatCop()} en gastos; el mes pasado gastaste ${last.expense.formatCop()} en total")
+            append(if (diff.isNegative) " (vas ${(-diff).formatCop()} por debajo)." else " (ya lo superas por ${diff.formatCop()}).")
+            append(" Ingresos: ${current.income.formatCop()} este mes y ${last.income.formatCop()} el anterior.")
+            r.comparison.filter { it.change.centavos > 0 && it.lastMonth.centavos > 0 }.maxByOrNull { it.change.centavos }?.let {
+                append("\nDonde más subió: ${it.name}, ${it.change.formatCop()} más que el mes pasado.")
+            }
+            append("\nOjo: el mes actual aún no termina.")
+        }
+    }
+
+    private suspend fun advice(): String {
+        val r = insights.report()
+        if (r.insights.isEmpty()) {
+            return if (r.expensesAnalyzed < 10) {
+                "Aún tengo pocos movimientos para analizar tus hábitos (${r.expensesAnalyzed}). Sigue registrando tus gastos y en unas semanas te doy consejos con tus datos."
+            } else {
+                "Vas bien: no veo alertas ni gastos fuera de lo normal. Sigue así."
+            }
+        }
+        return buildString {
+            append("Esto es lo más importante ahora:")
+            r.insights.take(4).forEach { append("\n• ${it.title}. ${it.body}") }
+            if (r.insights.size > 4) append("\nVe todos los consejos en Perfil > Análisis y consejos.")
         }
     }
 

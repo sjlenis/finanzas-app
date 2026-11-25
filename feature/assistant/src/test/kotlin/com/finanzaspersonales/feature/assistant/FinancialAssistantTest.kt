@@ -55,11 +55,15 @@ class FinancialAssistantTest {
         categories = CategoryRepository(db)
         transactions = TransactionRepository(db, clock)
         val planning = com.finanzaspersonales.core.data.PlanningRepository(db, clock)
+        val overview = com.finanzaspersonales.core.data.OverviewRepository(
+            accounts, planning, transactions,
+            com.finanzaspersonales.core.data.UserPreferences(ApplicationProvider.getApplicationContext<Context>()), clock,
+        )
         assistant = FinancialAssistant(
-            transactions, planning, com.finanzaspersonales.core.data.OverviewRepository(
-                accounts, planning, transactions,
-                com.finanzaspersonales.core.data.UserPreferences(ApplicationProvider.getApplicationContext<Context>()), clock,
-            ), clock,
+            transactions, planning, overview,
+            com.finanzaspersonales.core.data.InsightsRepository(transactions, planning, overview, clock),
+            com.finanzaspersonales.core.data.StatisticsRepository(db, accounts, transactions, clock),
+            clock,
         )
     }
 
@@ -174,5 +178,31 @@ class FinancialAssistantTest {
         )
         assertEquals(card, DraftCard.fromJson(card.toJson()))
         assertNull(DraftCard.fromJson("{dañado"))
+    }
+
+    @Test
+    fun puedoComprarUsaElDineroDisponible() = runTest {
+        val d = data("Nequi")
+        assistant.save(requireNotNull(assistant.reply("Me pagaron 400 mil", d).card), d)
+        val yes = assistant.reply("¿Puedo comprar unos audífonos de 100.000?", d).text
+        assertTrue(yes, yes.startsWith("\$100.000: Sí"))
+        val no = assistant.reply("¿Puedo comprar un celular de 2 millones?", d).text
+        assertTrue(no, no.contains("Mejor espera"))
+    }
+
+    @Test
+    fun consejosSinDatosNoInventa() = runTest {
+        val answer = assistant.reply("Dame consejos", data()).text
+        assertTrue(answer, answer.contains("pocos movimientos"))
+    }
+
+    @Test
+    fun patrimonioYComparacionMensual() = runTest {
+        val d = data("Nequi")
+        assistant.save(requireNotNull(assistant.reply("Me pagaron 400 mil", d).card), d)
+        val worth = assistant.reply("¿Cuál es mi patrimonio?", d).text
+        assertTrue(worth, worth.contains("\$400.000"))
+        val compare = assistant.reply("¿Cómo voy comparado con el mes pasado?", d).text
+        assertTrue(compare, compare.contains("No tengo movimientos del mes pasado"))
     }
 }

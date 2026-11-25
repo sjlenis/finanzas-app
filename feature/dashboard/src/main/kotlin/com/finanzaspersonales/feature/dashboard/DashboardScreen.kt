@@ -43,10 +43,12 @@ fun DashboardRoute(
     onOpenPending: () -> Unit,
     onOpenCalendar: () -> Unit = {},
     onOpenBudgets: () -> Unit = {},
+    onOpenInsights: () -> Unit = {},
+    onOpenStatistics: () -> Unit = {},
     viewModel: DashboardViewModel = hiltViewModel(),
 ) {
     val state by viewModel.state.collectAsStateWithLifecycle()
-    DashboardScreen(state, onOpenAccount, onOpenSecurity, onOpenPending, onOpenCalendar, onOpenBudgets)
+    DashboardScreen(state, onOpenAccount, onOpenSecurity, onOpenPending, onOpenCalendar, onOpenBudgets, onOpenInsights, onOpenStatistics)
 }
 
 /**
@@ -61,6 +63,8 @@ fun DashboardScreen(
     onOpenPending: () -> Unit = {},
     onOpenCalendar: () -> Unit = {},
     onOpenBudgets: () -> Unit = {},
+    onOpenInsights: () -> Unit = {},
+    onOpenStatistics: () -> Unit = {},
 ) {
     if (state.loading) {
         Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) { CircularProgressIndicator() }
@@ -148,6 +152,21 @@ fun DashboardScreen(
                 }
             }
         }
+        if (state.insights.isNotEmpty()) {
+            item {
+                FinanceCard(title = "Consejos para ti") {
+                    state.insights.take(2).forEach { tip ->
+                        Text(
+                            tip.title,
+                            style = MaterialTheme.typography.titleSmall,
+                            color = if (tip.severity == com.finanzaspersonales.engine.finance.InsightSeverity.ALERT) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.onSurface,
+                        )
+                        Text(tip.body, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    }
+                    TextButton(onClick = onOpenInsights) { Text(if (state.insights.size > 2) "Ver los ${state.insights.size} consejos" else "Ver análisis") }
+                }
+            }
+        }
         item {
             FinanceCard(title = "Este mes") {
                 Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
@@ -184,6 +203,24 @@ fun DashboardScreen(
                         style = MaterialTheme.typography.bodySmall,
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                     )
+                }
+            }
+        }
+        if (state.months.any { it.income.centavos != 0L || it.expense.centavos != 0L }) {
+            item {
+                FinanceCard(title = "Ingresos frente a gastos") {
+                    com.finanzaspersonales.core.designsystem.component.BarChart(
+                        groups = state.months.map {
+                            com.finanzaspersonales.core.designsystem.component.BarGroup(
+                                it.month.format(java.time.format.DateTimeFormatter.ofPattern("MMM", java.util.Locale.forLanguageTag("es-CO")))
+                                    .removeSuffix(".").replaceFirstChar { c -> c.uppercase() },
+                                listOf(it.income, it.expense),
+                            )
+                        },
+                        seriesNames = listOf("Ingresos", "Gastos"),
+                        height = 140.dp,
+                    )
+                    TextButton(onClick = onOpenStatistics) { Text("Ver estadísticas") }
                 }
             }
         }

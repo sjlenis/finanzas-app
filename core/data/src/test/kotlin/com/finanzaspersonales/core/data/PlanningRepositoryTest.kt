@@ -220,4 +220,49 @@ class PlanningRepositoryTest {
         assertEquals(pesos(53_100), pagado.monthItems.single().amount)
         assertTrue(pagado.pending.isEmpty())
     }
+
+    @Test
+    fun asesorDetectaGastosHormigaYSimulaCompras() = runTest {
+        val nequi = accountId("Nequi")
+        transactions.saveManual(null, com.finanzaspersonales.core.model.ManualEntryType.INCOME, pesos(1_000_000), nequi, null, "Salario", now, null)
+        (1..6).forEach { day ->
+            transactions.saveManual(
+                null, com.finanzaspersonales.core.model.ManualEntryType.EXPENSE, pesos(5_000), nequi, null, "Café",
+                now.minusSeconds(day * 86_400L), null,
+            )
+        }
+        val overview = OverviewRepository(accounts, planning, transactions, newPrefs(), clock)
+        val insights = InsightsRepository(transactions, planning, overview, clock)
+        val report = insights.report()
+        assertEquals(6, report.expensesAnalyzed)
+        assertEquals(pesos(30_000), report.ants!!.total)
+        assertTrue(report.insights.any { it.kind == com.finanzaspersonales.engine.finance.InsightKind.ANT })
+
+        val buy = insights.simulatePurchase(pesos(200_000))
+        assertEquals(pesos(970_000), buy.available)
+        assertEquals(com.finanzaspersonales.engine.finance.PurchaseVerdict.YES, buy.verdict)
+    }
+
+    @Test
+    fun estadisticasYPatrimonioNeto() = runTest {
+        val nequi = accountId("Nequi")
+        val type = com.finanzaspersonales.core.model.ManualEntryType.EXPENSE
+        transactions.saveManual(null, com.finanzaspersonales.core.model.ManualEntryType.INCOME, pesos(2_000_000), nequi, null, "Salario", now, null)
+        transactions.saveManual(null, type, pesos(300_000), nequi, null, "Mercado", now, null)
+        // Mes anterior: 24 de octubre.
+        transactions.saveManual(null, type, pesos(100_000), nequi, null, "Mercado", now.minusSeconds(31L * 86_400), null)
+        val debtId = planning.saveDebt(null, "Tarjeta", null, pesos(1_000_000), pesos(1_000_000), 0, RateType.NONE, pesos(100_000), 15, null, null)
+        planning.registerDebtPayment(debtId, pesos(100_000), null, null, java.time.LocalDate.of(2026, 11, 20))
+
+        val r = StatisticsRepository(db, accounts, transactions, clock).report()
+        assertEquals(6, r.months.size)
+        val nov = r.months.last()
+        assertEquals(pesos(2_000_000), nov.income)
+        assertEquals(pesos(300_000), nov.expense)
+        assertEquals(pesos(100_000), r.months[4].expense)
+        assertEquals(pesos(900_000), r.debt.last().second)
+        assertEquals(pesos(1_600_000), r.netWorth.assets)
+        assertEquals(pesos(900_000), r.netWorth.liabilities)
+        assertEquals(pesos(700_000), r.netWorth.net)
+    }
 }

@@ -54,6 +54,11 @@ interface PlanningDao {
     @Insert suspend fun insertDebtPayment(payment: DebtPaymentEntity): Long
     @Query("SELECT * FROM debt_payments WHERE debt_id = :debtId ORDER BY paid_at DESC")
     fun observeDebtPayments(debtId: Long): Flow<List<DebtPaymentEntity>>
+
+    /** Para las estadísticas: todo el historial de deudas y pagos. */
+    @Query("SELECT * FROM debts") suspend fun getAllDebts(): List<DebtEntity>
+    @Query("SELECT * FROM debt_payments ORDER BY paid_at") suspend fun getAllDebtPayments(): List<DebtPaymentEntity>
+    @Query("SELECT * FROM goal_contributions ORDER BY created_at") suspend fun getAllContributions(): List<GoalContributionEntity>
     @Query("SELECT * FROM debt_payments WHERE paid_at >= :fromEpochMs AND paid_at < :toEpochMs")
     fun observeDebtPaymentsBetween(fromEpochMs: Long, toEpochMs: Long): Flow<List<DebtPaymentEntity>>
 

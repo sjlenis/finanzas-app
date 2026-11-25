@@ -41,6 +41,14 @@ sealed interface FinanceQuery {
     data object WeeklyAllowance : FinanceQuery
     data object UpcomingPayments : FinanceQuery
     data object SavingsGoals : FinanceQuery
+    /** "¿Puedo comprar un celular de 1.200.000?" [price] null si no dijo el valor. */
+    data class CanAfford(val price: com.finanzaspersonales.core.model.Money?) : FinanceQuery
+    /** Consejos y análisis de hábitos. */
+    data object Advice : FinanceQuery
+    /** Activos menos deudas. */
+    data object NetWorth : FinanceQuery
+    /** Este mes frente al anterior. */
+    data object MonthComparison : FinanceQuery
 }
 
 sealed interface ParseResult {

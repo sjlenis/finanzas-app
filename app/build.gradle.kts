@@ -19,8 +19,8 @@ android {
         // Android 10+: cubre teléfonos de gama media actuales y de los últimos años.
         minSdk = 29
         targetSdk = 36
-        versionCode = 8
-        versionName = "0.7.1"
+        versionCode = 10
+        versionName = "0.9.0"
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
     }
 
