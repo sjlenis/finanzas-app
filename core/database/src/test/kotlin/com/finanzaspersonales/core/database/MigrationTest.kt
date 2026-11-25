@@ -33,6 +33,19 @@ class MigrationTest {
     @After
     fun tearDown() { context.deleteDatabase(name) }
 
+    private val v4Tables = listOf("obligation_payments", "obligations", "budgets", "goal_contributions", "savings_goals", "debt_payments", "debts")
+
+    /** Deja la base como estaba en [version], borrando las tablas que llegaron después. */
+    private fun downgradeTo(version: Int) {
+        open().apply { openHelper.writableDatabase; close() }
+        SQLiteDatabase.openDatabase(context.getDatabasePath(name).path, null, SQLiteDatabase.OPEN_READWRITE).use { raw ->
+            v4Tables.forEach { raw.execSQL("DROP TABLE $it") }
+            if (version < 3) raw.execSQL("DROP TABLE notification_samples")
+            if (version < 2) raw.execSQL("DROP TABLE chat_messages")
+            raw.version = version
+        }
+    }
+
     private fun open() = Room.databaseBuilder(context, FinanzasDatabase::class.java, name)
         .allowMainThreadQueries()
         .addMigrations(*Migrations.ALL)
@@ -44,12 +57,7 @@ class MigrationTest {
     @Test
     fun migrarDe1a2ConservaLosDatosYCreaElChat() = runTest {
         // 1. Base creada con el esquema actual y luego devuelta al estado de la versión 1.
-        open().apply { openHelper.writableDatabase; close() }
-        SQLiteDatabase.openDatabase(context.getDatabasePath(name).path, null, SQLiteDatabase.OPEN_READWRITE).use { raw ->
-            raw.execSQL("DROP TABLE chat_messages")
-            raw.execSQL("DROP TABLE notification_samples")
-            raw.version = 1
-        }
+        downgradeTo(1)
 
         // 2. Al abrir de nuevo se ejecuta MIGRATION_1_2 y Room valida el esquema.
         val db = open()
@@ -65,11 +73,7 @@ class MigrationTest {
 
     @Test
     fun migrarDe2a3CreaLasMuestras() = runTest {
-        open().apply { openHelper.writableDatabase; close() }
-        SQLiteDatabase.openDatabase(context.getDatabasePath(name).path, null, SQLiteDatabase.OPEN_READWRITE).use { raw ->
-            raw.execSQL("DROP TABLE notification_samples")
-            raw.version = 2
-        }
+        downgradeTo(2)
         val db = open()
         try {
             db.notificationSampleDao().insert(
@@ -78,6 +82,25 @@ class MigrationTest {
                 ),
             )
             assertEquals(1, db.notificationSampleDao().observeAll().first().size)
+        } finally {
+            db.close()
+        }
+    }
+
+    @Test
+    fun migrarDe3a4CreaLasTablasDePlanificacion() = runTest {
+        downgradeTo(3)
+        val db = open()
+        try {
+            val id = db.planningDao().insertDebt(
+                com.finanzaspersonales.core.database.entity.DebtEntity(
+                    name = "Tarjeta", creditor = null, initialCentavos = 100, balanceCentavos = 100, rateBasisPoints = 0,
+                    rateType = "NONE", monthlyPaymentCentavos = 10, dueDay = 5, remainingInstallments = null,
+                    status = "ACTIVE", notes = null, createdAtEpochMs = 1L,
+                ),
+            )
+            assertEquals(id, db.planningDao().getDebt(id)?.id)
+            assertEquals(DefaultData.accounts.size, db.accountDao().observeActiveWithBalance().first().size)
         } finally {
             db.close()
         }
