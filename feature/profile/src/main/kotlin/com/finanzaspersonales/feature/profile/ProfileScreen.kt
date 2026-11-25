@@ -11,7 +11,9 @@ import androidx.compose.material.icons.outlined.BarChart
 import androidx.compose.material.icons.outlined.CalendarMonth
 import androidx.compose.material.icons.outlined.Category
 import androidx.compose.material.icons.outlined.CreditCard
+import androidx.compose.material.icons.outlined.DoneAll
 import androidx.compose.material.icons.outlined.Lock
+import androidx.compose.material.icons.outlined.NotificationsActive
 import androidx.compose.material.icons.outlined.Savings
 import androidx.compose.material.icons.outlined.Shield
 import androidx.compose.material3.Icon
@@ -41,10 +43,14 @@ fun ProfileRoute(
     onAccounts: () -> Unit,
     onCategories: () -> Unit,
     onSecurity: () -> Unit,
+    onNotifications: () -> Unit = {},
+    onPending: () -> Unit = {},
 ) {
     val sections = listOf(
         Section("Cuentas", Icons.Outlined.AccountBalance, "Saldos, conciliación e historial por cuenta", onAccounts),
         Section("Categorías", Icons.Outlined.Category, "Crear categorías y subcategorías propias", onCategories),
+        Section("Notificaciones bancarias", Icons.Outlined.NotificationsActive, "Detectar movimientos de Nequi y Bancolombia", onNotifications),
+        Section("Por revisar", Icons.Outlined.DoneAll, "Movimientos detectados pendientes de confirmar", onPending),
         Section("Seguridad", Icons.Outlined.Lock, "PIN, huella y bloqueo automático", onSecurity),
         Section("Deudas", Icons.Outlined.CreditCard, "Llega en la Fase 6"),
         Section("Ahorros", Icons.Outlined.Savings, "Llega en la Fase 6"),

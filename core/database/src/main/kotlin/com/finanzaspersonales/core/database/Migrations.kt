@@ -25,5 +25,19 @@ object Migrations {
         }
     }
 
-    val ALL = arrayOf(MIGRATION_1_2)
+    /** Fase 5: muestras opcionales de notificaciones (texto ya enmascarado). */
+    val MIGRATION_2_3 = object : Migration(2, 3) {
+        override fun migrate(db: SupportSQLiteDatabase) {
+            db.execSQL(
+                "CREATE TABLE IF NOT EXISTS `notification_samples` (" +
+                    "`id` INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL, " +
+                    "`bank` TEXT NOT NULL, " +
+                    "`masked_text` TEXT NOT NULL, " +
+                    "`result` TEXT NOT NULL, " +
+                    "`posted_at` INTEGER NOT NULL)",
+            )
+        }
+    }
+
+    val ALL = arrayOf(MIGRATION_1_2, MIGRATION_2_3)
 }

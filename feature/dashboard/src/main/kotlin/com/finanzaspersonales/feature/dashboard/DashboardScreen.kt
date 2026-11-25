@@ -37,10 +37,11 @@ import com.finanzaspersonales.core.model.Money
 fun DashboardRoute(
     onOpenAccount: (Long) -> Unit,
     onOpenSecurity: () -> Unit,
+    onOpenPending: () -> Unit,
     viewModel: DashboardViewModel = hiltViewModel(),
 ) {
     val state by viewModel.state.collectAsStateWithLifecycle()
-    DashboardScreen(state, onOpenAccount, onOpenSecurity)
+    DashboardScreen(state, onOpenAccount, onOpenSecurity, onOpenPending)
 }
 
 /**
@@ -48,7 +49,12 @@ fun DashboardRoute(
  * secciones aún no construidas lo dicen claramente en vez de mostrar cifras inventadas.
  */
 @Composable
-fun DashboardScreen(state: DashboardUiState, onOpenAccount: (Long) -> Unit, onOpenSecurity: () -> Unit) {
+fun DashboardScreen(
+    state: DashboardUiState,
+    onOpenAccount: (Long) -> Unit,
+    onOpenSecurity: () -> Unit,
+    onOpenPending: () -> Unit = {},
+) {
     if (state.loading) {
         Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) { CircularProgressIndicator() }
         return
@@ -58,6 +64,18 @@ fun DashboardScreen(state: DashboardUiState, onOpenAccount: (Long) -> Unit, onOp
         verticalArrangement = Arrangement.spacedBy(12.dp),
         modifier = Modifier.fillMaxSize(),
     ) {
+        if (state.pendingCount > 0) {
+            item {
+                FinanceCard(title = "Movimientos por revisar") {
+                    Text(
+                        if (state.pendingCount == 1) "Detecté 1 movimiento en tus notificaciones. No cuenta hasta que lo confirmes."
+                        else "Detecté ${state.pendingCount} movimientos en tus notificaciones. No cuentan hasta que los confirmes.",
+                        style = MaterialTheme.typography.bodyMedium,
+                    )
+                    TextButton(onClick = onOpenPending) { Text("Revisar") }
+                }
+            }
+        }
         if (!state.hasPin) {
             item {
                 FinanceCard(title = "Protege tu información") {

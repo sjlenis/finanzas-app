@@ -4,6 +4,7 @@ import android.content.Context
 import androidx.datastore.core.DataStore
 import androidx.datastore.preferences.core.Preferences
 import androidx.datastore.preferences.core.edit
+import androidx.datastore.preferences.core.booleanPreferencesKey
 import androidx.datastore.preferences.core.longPreferencesKey
 import androidx.datastore.preferences.preferencesDataStore
 import dagger.hilt.android.qualifiers.ApplicationContext
@@ -16,15 +17,34 @@ private val Context.preferencesStore: DataStore<Preferences> by preferencesDataS
 
 /** Preferencias de uso que no son datos financieros (se guardan en el teléfono). */
 @Singleton
-class UserPreferences @Inject constructor(
-    @ApplicationContext private val context: Context,
+class UserPreferences internal constructor(
+    private val store: DataStore<Preferences>,
 ) {
+    @Inject constructor(@ApplicationContext context: Context) : this(context.preferencesStore)
+
     private val defaultAccountKey = longPreferencesKey("default_account_id")
 
     /** Cuenta que usa el asistente cuando el mensaje no dice cuál. Null = la primera activa. */
-    val defaultAccountId: Flow<Long?> = context.preferencesStore.data.map { it[defaultAccountKey] }
+    val defaultAccountId: Flow<Long?> = store.data.map { it[defaultAccountKey] }
 
     suspend fun setDefaultAccountId(id: Long) {
-        context.preferencesStore.edit { it[defaultAccountKey] = id }
+        store.edit { it[defaultAccountKey] = id }
+    }
+
+    private val detectionKey = booleanPreferencesKey("notification_detection_enabled")
+    private val samplesKey = booleanPreferencesKey("notification_samples_enabled")
+
+    /** Leer notificaciones de Nequi y Bancolombia. Apagado hasta que lo actives. */
+    val notificationDetectionEnabled: Flow<Boolean> = store.data.map { it[detectionKey] ?: false }
+
+    /** Guardar muestras enmascaradas para mejorar el lector. Apagado por defecto. */
+    val notificationSamplesEnabled: Flow<Boolean> = store.data.map { it[samplesKey] ?: false }
+
+    suspend fun setNotificationDetection(enabled: Boolean) {
+        store.edit { it[detectionKey] = enabled }
+    }
+
+    suspend fun setNotificationSamples(enabled: Boolean) {
+        store.edit { it[samplesKey] = enabled }
     }
 }

@@ -19,12 +19,27 @@ android {
         // Android 10+: cubre teléfonos de gama media actuales y de los últimos años.
         minSdk = 29
         targetSdk = 36
-        versionCode = 4
-        versionName = "0.4.0"
+        versionCode = 5
+        versionName = "0.5.0"
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
     }
 
+    signingConfigs {
+        // Clave de depuración fija y pública (no protege nada): así cada APK que compila
+        // GitHub tiene la misma firma y se puede instalar encima del anterior sin perder datos.
+        // La versión final (Fase 8) usará una clave privada que nunca se sube al repositorio.
+        getByName("debug") {
+            storeFile = file("debug.keystore")
+            storePassword = "android"
+            keyAlias = "androiddebugkey"
+            keyPassword = "android"
+        }
+    }
+
     buildTypes {
+        debug {
+            signingConfig = signingConfigs.getByName("debug")
+        }
         release {
             isMinifyEnabled = true
             isShrinkResources = true
@@ -57,6 +72,7 @@ dependencies {
     implementation(project(":feature:profile"))
     implementation(project(":feature:accounts"))
     implementation(project(":feature:settings"))
+    implementation(project(":engine:notifications"))
     implementation(libs.biometric)
 
     implementation(libs.androidx.core.ktx)
