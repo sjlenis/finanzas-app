@@ -9,6 +9,7 @@ import com.finanzaspersonales.core.data.Debt
 import com.finanzaspersonales.core.data.DebtPayment
 import com.finanzaspersonales.core.data.DebtStatus
 import com.finanzaspersonales.core.data.FinancialProfile
+import com.finanzaspersonales.core.data.PaymentFrequency
 import com.finanzaspersonales.core.data.PlanningRepository
 import com.finanzaspersonales.core.model.Account
 import com.finanzaspersonales.core.model.Money
@@ -40,6 +41,7 @@ data class DebtForm(
     val rateText: String = "",
     val rateType: RateType = RateType.EFFECTIVE_ANNUAL,
     val paymentDigits: String = "",
+    val frequency: PaymentFrequency = PaymentFrequency.MONTHLY,
     val dueDay: String = "",
     val installments: String = "",
     val notes: String = "",
@@ -56,7 +58,7 @@ data class DebtForm(
         fun from(d: Debt) = DebtForm(
             name = d.name, creditor = d.creditor.orEmpty(), initialDigits = d.initial.toDigits(), balanceDigits = d.balance.toDigits(),
             rateText = if (d.rateBasisPoints == 0) "" else java.math.BigDecimal(d.rateBasisPoints).movePointLeft(2).stripTrailingZeros().toPlainString().replace('.', ','),
-            rateType = d.rateType, paymentDigits = d.monthlyPayment.toDigits(), dueDay = d.dueDay?.toString().orEmpty(),
+            rateType = d.rateType, paymentDigits = d.installment.toDigits(), frequency = d.frequency, dueDay = d.dueDay?.toString().orEmpty(),
             installments = d.remainingInstallments?.toString().orEmpty(), notes = d.notes.orEmpty(),
         )
     }
@@ -87,8 +89,8 @@ class DebtsViewModel @Inject constructor(private val planning: PlanningRepositor
                 id = id, name = f.name, creditor = f.creditor, initial = initial,
                 balance = if (f.balanceDigits.isBlank()) initial else digits(f.balanceDigits),
                 rateBasisPoints = rate, rateType = if (rate == 0) RateType.NONE else f.rateType,
-                monthlyPayment = digits(f.paymentDigits), dueDay = f.dueDay.toIntOrNull(),
-                remainingInstallments = f.installments.toIntOrNull(), notes = f.notes,
+                installment = digits(f.paymentDigits), dueDay = f.dueDay.toIntOrNull(),
+                remainingInstallments = f.installments.toIntOrNull(), notes = f.notes, frequency = f.frequency,
             )
         }.onSuccess { onDone() }.onFailure { _message.value = it.message }
     }
@@ -134,8 +136,8 @@ class DebtDetailViewModel @Inject constructor(
             planning.saveDebt(
                 id = id, name = f.name, creditor = f.creditor, initial = digits(f.initialDigits), balance = digits(f.balanceDigits),
                 rateBasisPoints = rate, rateType = if (rate == 0) RateType.NONE else f.rateType,
-                monthlyPayment = digits(f.paymentDigits), dueDay = f.dueDay.toIntOrNull(),
-                remainingInstallments = f.installments.toIntOrNull(), notes = f.notes,
+                installment = digits(f.paymentDigits), dueDay = f.dueDay.toIntOrNull(),
+                remainingInstallments = f.installments.toIntOrNull(), notes = f.notes, frequency = f.frequency,
             )
         }.onSuccess { onDone() }.onFailure { _message.value = it.message }
     }

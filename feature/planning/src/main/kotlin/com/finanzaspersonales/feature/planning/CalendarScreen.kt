@@ -27,6 +27,8 @@ import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.finanzaspersonales.core.data.Obligation
+import com.finanzaspersonales.core.data.PayCurrency
+import com.finanzaspersonales.core.data.formatUsd
 import com.finanzaspersonales.core.data.UpcomingItem
 import com.finanzaspersonales.core.data.UpcomingType
 import com.finanzaspersonales.core.designsystem.component.AmountField
@@ -35,6 +37,7 @@ import com.finanzaspersonales.core.designsystem.component.ChoiceField
 import com.finanzaspersonales.core.designsystem.component.FinanceCard
 import com.finanzaspersonales.core.designsystem.component.MoneyText
 import com.finanzaspersonales.core.designsystem.component.formatShortDate
+import com.finanzaspersonales.core.model.formatCop
 import com.finanzaspersonales.core.model.CategoryClass
 import com.finanzaspersonales.core.designsystem.component.MoneyTone
 import java.time.YearMonth
@@ -50,6 +53,7 @@ fun CalendarRoute(onBack: () -> Unit, onOpenDebt: (Long) -> Unit, viewModel: Cal
     var form by remember { mutableStateOf<ObligationForm?>(null) }
     var selected by remember { mutableStateOf<UpcomingItem?>(null) }
     var deleting by remember { mutableStateOf<Long?>(null) }
+    var editingRate by remember { mutableStateOf(false) }
     val overview = state.overview
 
     PlanningScaffold("Calendario de pagos", onBack, fabLabel = "Agregar", onFab = { form = ObligationForm() }) {
@@ -63,10 +67,23 @@ fun CalendarRoute(onBack: () -> Unit, onOpenDebt: (Long) -> Unit, viewModel: Cal
                 Note("Las cuotas de tus deudas aparecen solas. Agrega aquí arriendo, servicios, suscripciones o tu salario.")
             }
         }
+        if (overview.usdRate != null || state.obligations.any { it.currency == PayCurrency.USD }) {
+            item {
+                FinanceCard(title = "Tasa del dólar") {
+                    overview.usdRate?.let { LabeledMoney("1 dólar", it) }
+                    if (overview.missingUsdRate) Note("Tienes pagos en dólares. Escribe la tasa para estimarlos en pesos.", error = true)
+                    Note(
+                        "La usamos solo para estimar. Al marcar un pago en dólares escribes lo que el banco te cobró en pesos " +
+                            "y la tasa se ajusta con ese cobro real. La app no consulta la tasa en internet.",
+                    )
+                    TextButton(onClick = { editingRate = true }) { Text(if (overview.usdRate == null) "Poner tasa" else "Cambiar tasa") }
+                }
+            }
+        }
         if (overview.monthItems.isEmpty()) {
             item { Note("Aún no tienes pagos ni ingresos fijos. Toca «Agregar» para crear el primero.") }
         }
-        items(overview.monthItems, key = { "${it.type}-${it.id}" }) { item ->
+        items(overview.monthItems, key = { it.key }) { item ->
             CalendarRow(item, isLate = !item.paid && item.date.isBefore(overview.today)) {
                 if (item.type == UpcomingType.DEBT) onOpenDebt(item.id) else selected = item
             }
@@ -93,7 +110,7 @@ fun CalendarRoute(onBack: () -> Unit, onOpenDebt: (Long) -> Unit, viewModel: Cal
             obligation = obligation,
             accounts = state.accounts.map { Choice(it.id, it.name) },
             onDismiss = { selected = null },
-            onMarkPaid = { accountId -> viewModel.markPaid(item.id, accountId) { selected = null } },
+            onMarkPaid = { accountId, paid, updateRate -> viewModel.markPaid(item.id, accountId, paid, item.usdAmount, updateRate) { selected = null } },
             onUnmark = { viewModel.unmarkPaid(item.id) { selected = null } },
             onEdit = { selected = null; form = ObligationForm.from(obligation) },
         )
@@ -114,6 +131,20 @@ fun CalendarRoute(onBack: () -> Unit, onOpenDebt: (Long) -> Unit, viewModel: Cal
             "¿Eliminar este pago fijo?", "Deja de aparecer en el calendario. Los movimientos ya registrados se conservan.", "Eliminar",
             { viewModel.delete(id) {} },
         ) { deleting = null }
+    }
+    if (editingRate) {
+        var digits by remember { mutableStateOf(overview?.usdRate.toDigits()) }
+        AlertDialog(
+            onDismissRequest = { editingRate = false },
+            title = { Text("Tasa del dólar") },
+            text = {
+                DialogColumn {
+                    AmountField(digits, { digits = it }, label = "Pesos por 1 dólar", supportingText = "Por ejemplo, la que te cobró el banco la última vez")
+                }
+            },
+            confirmButton = { TextButton(onClick = { viewModel.setUsdRate(digits) { editingRate = false } }) { Text("Guardar") } },
+            dismissButton = { TextButton(onClick = { editingRate = false }) { Text("Cancelar") } },
+        )
     }
     message?.let { MessageDialog(it, viewModel::clearMessage) }
 }
@@ -139,7 +170,15 @@ private fun CalendarRow(item: UpcomingItem, isLate: Boolean, onClick: () -> Unit
                 }
                 Note("${formatShortDate(item.date)} · ${item.type.label()} · $status", error = isLate)
             }
-            MoneyText(item.amount, tone = if (item.type == UpcomingType.INCOME) MoneyTone.Income else MoneyTone.Expense)
+            Column(horizontalAlignment = Alignment.End) {
+                val usdAmount = item.usdAmount
+                if (usdAmount != null) {
+                    Text(usdAmount.formatUsd(), style = MaterialTheme.typography.titleSmall)
+                    if (item.amount.centavos > 0) Note((if (item.paid) "" else "≈ ") + item.amount.formatCop())
+                } else {
+                    MoneyText(item.amount, tone = if (item.type == UpcomingType.INCOME) MoneyTone.Income else MoneyTone.Expense)
+                }
+            }
         }
     }
 }
@@ -150,18 +189,21 @@ private fun ItemDialog(
     obligation: Obligation,
     accounts: List<Choice<Long>>,
     onDismiss: () -> Unit,
-    onMarkPaid: (Long?) -> Unit,
+    onMarkPaid: (accountId: Long?, paidDigits: String, updateRate: Boolean) -> Unit,
     onUnmark: () -> Unit,
     onEdit: () -> Unit,
 ) {
     val income = item.type == UpcomingType.INCOME
     var accountId by remember { mutableStateOf(obligation.accountId ?: accounts.firstOrNull()?.value) }
+    val usd = item.usdAmount != null
+    var paidDigits by remember { mutableStateOf(item.amount.toDigits()) }
+    var updateRate by remember { mutableStateOf(true) }
     AlertDialog(
         onDismissRequest = onDismiss,
         title = { Text(item.name) },
         text = {
             DialogColumn {
-                LabeledMoney("Valor", item.amount)
+                item.usdAmount?.let { LabeledText("Valor", it.formatUsd()) } ?: LabeledMoney("Valor", item.amount)
                 LabeledText("Fecha", formatShortDate(item.date))
                 if (item.paid) {
                     Note(
@@ -175,13 +217,28 @@ private fun ItemDialog(
                         choices = listOf(Choice(-1L, "No registrar movimiento (ya lo anoté)")) + accounts,
                         onSelect = { accountId = it.takeIf { id -> id != -1L } },
                     )
+                    if (accountId != null) {
+                        AmountField(
+                            paidDigits, { paidDigits = it },
+                            label = if (income) "Valor recibido en pesos" else "Valor pagado en pesos",
+                            supportingText = if (usd) "Lo que el banco te cobró, según tu extracto o notificación" else "Cámbialo si este mes fue distinto",
+                        )
+                        if (usd) {
+                            Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+                                Text("Ajustar la tasa del dólar con este cobro", Modifier.weight(1f), style = MaterialTheme.typography.bodyMedium)
+                                Switch(checked = updateRate, onCheckedChange = { updateRate = it })
+                            }
+                        }
+                    }
                     Note("Si eliges una cuenta, se crea el movimiento con la fecha de hoy y se actualiza el saldo.")
                 }
             }
         },
         confirmButton = {
             if (item.paid) TextButton(onClick = onUnmark) { Text("Desmarcar") }
-            else TextButton(onClick = { onMarkPaid(accountId) }) { Text(if (income) "Marcar recibido" else "Marcar pagado") }
+            else TextButton(onClick = { onMarkPaid(accountId, if (accountId != null) paidDigits else "", updateRate) }) {
+                Text(if (income) "Marcar recibido" else "Marcar pagado")
+            }
         },
         dismissButton = {
             Row {
@@ -215,7 +272,24 @@ private fun ObligationDialog(
                     onSelect = { f = f.copy(isIncome = it, categoryId = null) },
                 )
                 OutlinedTextField(f.name, { f = f.copy(name = it) }, label = { Text("Nombre") }, singleLine = true, modifier = Modifier.fillMaxWidth())
-                AmountField(f.amountDigits, { f = f.copy(amountDigits = it) }, label = "Valor")
+                ChoiceField(
+                    label = "Moneda",
+                    selected = f.currency,
+                    choices = listOf(Choice(PayCurrency.COP, "Pesos colombianos (COP)"), Choice(PayCurrency.USD, "Dólares (USD)")),
+                    onSelect = { f = f.copy(currency = it, amountDigits = "") },
+                )
+                if (f.currency == PayCurrency.USD) {
+                    OutlinedTextField(
+                        f.amountDigits, { v -> f = f.copy(amountDigits = v.filter { it.isDigit() || it == ',' || it == '.' }.take(10)) },
+                        label = { Text("Valor en dólares") }, singleLine = true,
+                        isError = f.amountDigits.isNotEmpty() && parseUsd(f.amountDigits) == null,
+                        supportingText = { Text("Por ejemplo 12,99. En pesos se estima con tu tasa del dólar.") },
+                        keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal),
+                        modifier = Modifier.fillMaxWidth(),
+                    )
+                } else {
+                    AmountField(f.amountDigits, { f = f.copy(amountDigits = it) }, label = "Valor")
+                }
                 OutlinedTextField(
                     f.day, { v -> f = f.copy(day = v.filter(Char::isDigit).take(2)) },
                     label = { Text("Día del mes") }, singleLine = true,

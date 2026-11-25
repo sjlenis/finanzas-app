@@ -1,11 +1,27 @@
 package com.finanzaspersonales.core.data
 
 import com.finanzaspersonales.core.model.Money
+import com.finanzaspersonales.core.model.formatCop
 import com.finanzaspersonales.engine.finance.RateType
 import java.time.Instant
 import java.time.LocalDate
 
 enum class DebtStatus { ACTIVE, PAID }
+
+/** Cada cuánto se paga la cuota. Quincenal = dos cuotas al mes. */
+enum class PaymentFrequency(val label: String, val perMonth: Int) {
+    MONTHLY("Mensual", 1),
+    BIWEEKLY("Quincenal", 2),
+}
+
+/** Moneda de un pago fijo. En USD el valor en pesos se estima con tu tasa. */
+enum class PayCurrency { COP, USD }
+
+/** Valor en dólares: `US$12,99`. [Money] guarda centavos de dólar. */
+fun Money.formatUsd(): String = (if (isNegative) "-" else "") + "US$" + abs().formatCop(withSymbol = false)
+
+/** Convierte centavos de dólar a pesos con [copPerUsd] (pesos por 1 dólar). */
+fun Money.usdToCop(copPerUsd: Money): Money = Money((Math.multiplyExact(centavos, copPerUsd.centavos) + 50) / 100)
 
 data class Debt(
     val id: Long,
@@ -15,12 +31,24 @@ data class Debt(
     val balance: Money,
     val rateBasisPoints: Int,
     val rateType: RateType,
-    val monthlyPayment: Money,
+    /** Valor de cada cuota. */
+    val installment: Money,
+    val frequency: PaymentFrequency,
+    /** Día de pago; si es quincenal, el primero de los dos (el segundo es 15 días después). */
     val dueDay: Int?,
     val remainingInstallments: Int?,
     val status: DebtStatus,
     val notes: String?,
 ) {
+    /** Lo que pagas al mes en cuotas (quincenal = dos cuotas). */
+    val monthlyPayment: Money get() = installment * frequency.perMonth
+
+    /** Días del mes en que vence la cuota. */
+    val dueDays: List<Int> get() {
+        val first = dueDay ?: return emptyList()
+        return if (frequency == PaymentFrequency.BIWEEKLY) listOf(first, if (first <= 15) first + 15 else first - 15).sorted() else listOf(first)
+    }
+
     val paidPercent: Int get() = if (initial.centavos <= 0) 0 else (((initial - balance).centavos * 100) / initial.centavos).toInt().coerceIn(0, 100)
 }
 
@@ -55,6 +83,8 @@ data class Obligation(
     val categoryId: Long?,
     val accountId: Long?,
     val active: Boolean,
+    /** En USD, [amount] son centavos de dólar. */
+    val currency: PayCurrency = PayCurrency.COP,
 )
 
 /** Resumen de tus últimos meses completos, base de todas las recomendaciones. */

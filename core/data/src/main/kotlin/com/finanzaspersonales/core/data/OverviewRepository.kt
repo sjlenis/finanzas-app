@@ -18,8 +18,24 @@ import javax.inject.Singleton
 
 enum class UpcomingType { OBLIGATION, DEBT, INCOME }
 
-/** Un pago (o ingreso) previsto en el calendario. */
-data class UpcomingItem(val id: Long, val type: UpcomingType, val name: String, val amount: Money, val date: LocalDate, val paid: Boolean)
+/**
+ * Un pago (o ingreso) previsto en el calendario. [amount] siempre está en pesos; si el
+ * pago es en dólares, [usdAmount] trae el valor original y [amount] es la estimación
+ * con tu tasa (o lo que realmente pagaste, si ya está pagado). [seq] distingue las dos
+ * cuotas de una deuda quincenal.
+ */
+data class UpcomingItem(
+    val id: Long,
+    val type: UpcomingType,
+    val name: String,
+    val amount: Money,
+    val date: LocalDate,
+    val paid: Boolean,
+    val seq: Int = 0,
+    val usdAmount: Money? = null,
+) {
+    val key: String get() = "$type-$id-$seq"
+}
 
 data class BudgetLine(val budget: Budget, val status: BudgetStatus)
 
@@ -42,7 +58,12 @@ data class CashOverview(
     val projectedEndOfMonth: Money,
     val budgets: List<BudgetLine>,
     val profile: FinancialProfile,
+    /** Pesos por dólar que usas para estimar; null si aún no la has puesto. */
+    val usdRate: Money? = null,
 ) {
+    /** Hay pagos en dólares pendientes pero no hay tasa para estimarlos. */
+    val missingUsdRate: Boolean get() = usdRate == null && monthItems.any { it.usdAmount != null && !it.paid }
+
     val pending: List<UpcomingItem> get() = monthItems.filter { !it.paid && it.type != UpcomingType.INCOME }
 }
 
@@ -51,30 +72,50 @@ class OverviewRepository @Inject constructor(
     private val accounts: AccountRepository,
     private val planning: PlanningRepository,
     private val transactions: TransactionRepository,
+    private val preferences: UserPreferences,
     private val clock: Clock,
 ) {
     fun observe(): Flow<CashOverview> {
         val today = BogotaTime.today(clock)
         val month = YearMonth.from(today)
         val monthRange = Period.MONTH.rangeContaining(today)
-        val debtsThisMonth = planning.observeDebtsPaidIn(month)
         val schedule = combine(
-            planning.observeObligations(), planning.observePaidObligations(month), planning.observeDebts(), debtsThisMonth,
-        ) { obligations, paid, debts, paidDebts ->
-            buildList {
+            planning.observeObligations(), planning.observeObligationPayments(month), planning.observeDebts(),
+            planning.observeDebtPaymentCounts(month), preferences.usdRate,
+        ) { obligations, paid, debts, debtPayments, rate ->
+            val items = buildList {
                 obligations.filter { it.active }.forEach { o ->
-                    add(UpcomingItem(o.id, if (o.isIncome) UpcomingType.INCOME else UpcomingType.OBLIGATION, o.name, o.amount, month.dayClamped(o.dayOfMonth), o.id in paid))
+                    val isPaid = o.id in paid
+                    val usd = o.currency == PayCurrency.USD
+                    val cop = paid[o.id] ?: when {
+                        !usd -> o.amount
+                        rate != null -> o.amount.usdToCop(rate)
+                        else -> Money.ZERO
+                    }
+                    add(
+                        UpcomingItem(
+                            o.id, if (o.isIncome) UpcomingType.INCOME else UpcomingType.OBLIGATION, o.name, cop,
+                            month.dayClamped(o.dayOfMonth), isPaid, usdAmount = o.amount.takeIf { usd },
+                        ),
+                    )
                 }
-                debts.filter { it.status == DebtStatus.ACTIVE && it.monthlyPayment.centavos > 0 }.forEach { d ->
-                    add(UpcomingItem(d.id, UpcomingType.DEBT, d.name, minOf(d.monthlyPayment, d.balance), month.dayClamped(d.dueDay ?: month.lengthOfMonth()), d.id in paidDebts))
+                debts.filter { it.status == DebtStatus.ACTIVE && it.installment.centavos > 0 }.forEach { d ->
+                    val days = d.dueDays.ifEmpty {
+                        if (d.frequency == PaymentFrequency.BIWEEKLY) listOf(15, month.lengthOfMonth()) else listOf(month.lengthOfMonth())
+                    }
+                    val count = debtPayments[d.id] ?: 0
+                    days.forEachIndexed { i, day ->
+                        add(UpcomingItem(d.id, UpcomingType.DEBT, d.name, minOf(d.installment, d.balance), month.dayClamped(day), i < count, seq = i))
+                    }
                 }
             }.sortedBy { it.date }
+            items to rate
         }
         val budgets = combine(planning.observeBudgets(), transactions.observeSpendingByCategory(monthRange)) { list, spending ->
             val byCategory = spending.associate { it.categoryId to it.amount }
             list.map { BudgetLine(it, BudgetStatus(it.limit, byCategory[it.categoryId] ?: Money.ZERO)) }
         }
-        return combine(accounts.observeAccounts(), planning.observeGoals(), schedule, budgets, planning.observeProfile()) { accountList, goals, items, budgetLines, profile ->
+        return combine(accounts.observeAccounts(), planning.observeGoals(), schedule, budgets, planning.observeProfile()) { accountList, goals, (items, rate), budgetLines, profile ->
             val liquid = accountList.filter { it.isLiquid }.map { it.balance }.sum()
             val pending = items.filter { !it.paid && it.type != UpcomingType.INCOME }
             val incomes = items.filter { it.type == UpcomingType.INCOME }
@@ -105,6 +146,7 @@ class OverviewRepository @Inject constructor(
                 projectedEndOfMonth = Projection.endOfMonth(liquid, expectedIncome, money.obligations, daily, today),
                 budgets = budgetLines.sortedByDescending { it.status.percent },
                 profile = profile,
+                usdRate = rate,
             )
         }
     }

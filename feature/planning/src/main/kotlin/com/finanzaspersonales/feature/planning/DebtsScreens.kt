@@ -31,6 +31,7 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.finanzaspersonales.core.common.BogotaTime
 import com.finanzaspersonales.core.data.Debt
 import com.finanzaspersonales.core.data.DebtStatus
+import com.finanzaspersonales.core.data.PaymentFrequency
 import com.finanzaspersonales.core.designsystem.component.AmountField
 import com.finanzaspersonales.core.designsystem.theme.AmountLarge
 import com.finanzaspersonales.core.designsystem.component.Choice
@@ -70,7 +71,7 @@ fun DebtsRoute(onBack: () -> Unit, onOpen: (Long) -> Unit, onPlan: () -> Unit, v
         item {
             FinanceCard(title = "Total que debes") {
                 MoneyText(state.totalBalance, style = AmountLarge)
-                LabeledMoney("Cuotas mensuales", state.totalMonthly)
+                LabeledMoney("Pagas en cuotas al mes", state.totalMonthly)
                 Button(onClick = onPlan, enabled = state.active.isNotEmpty(), modifier = Modifier.fillMaxWidth()) {
                     Text("Ver plan para salir de deudas")
                 }
@@ -94,8 +95,8 @@ private fun DebtCard(debt: Debt, onClick: () -> Unit) {
                 listOfNotNull(
                     debt.creditor,
                     debt.rateLabel(),
-                    "Cuota ${debt.monthlyPayment.formatCop()}",
-                    debt.dueDay?.let { "día $it" },
+                    "Cuota ${debt.frequency.label.lowercase()} ${debt.installment.formatCop()}",
+                    debt.dueDays.takeIf { it.isNotEmpty() }?.let { "día " + it.joinToString(" y ") },
                     if (debt.status == DebtStatus.PAID) "Pagada" else null,
                 ).joinToString(" · "),
             )
@@ -119,10 +120,11 @@ fun DebtDetailRoute(onBack: () -> Unit, viewModel: DebtDetailViewModel = hiltVie
             FinanceCard(title = "Saldo pendiente") {
                 MoneyText(debt.balance, style = AmountLarge)
                 Progress(debt.paidPercent)
-                LabeledMoney("Valor inicial", debt.initial)
+                LabeledMoney("Monto total", debt.initial)
                 LabeledText("Tasa", debt.rateLabel())
-                LabeledMoney("Cuota mensual", debt.monthlyPayment)
-                debt.dueDay?.let { LabeledText("Día de pago", "$it de cada mes") }
+                LabeledMoney("Cuota ${debt.frequency.label.lowercase()}", debt.installment)
+                if (debt.frequency == PaymentFrequency.BIWEEKLY) LabeledMoney("Equivale al mes a", debt.monthlyPayment)
+                debt.dueDays.takeIf { it.isNotEmpty() }?.let { LabeledText(if (it.size > 1) "Días de pago" else "Día de pago", it.joinToString(" y ") + " de cada mes") }
                 debt.remainingInstallments?.let { LabeledText("Cuotas pendientes", it.toString()) }
                 debt.creditor?.let { LabeledText("Entidad o persona", it) }
                 debt.notes?.let { Note(it) }
@@ -146,7 +148,7 @@ fun DebtDetailRoute(onBack: () -> Unit, viewModel: DebtDetailViewModel = hiltVie
         }
     }
     if (paying && debt != null) {
-        var amount by remember { mutableStateOf(debt.monthlyPayment.toDigits()) }
+        var amount by remember { mutableStateOf(debt.installment.toDigits()) }
         var accountId by remember { mutableStateOf<Long?>(state.accounts.firstOrNull()?.id) }
         var newBalance by remember { mutableStateOf("") }
         var date by remember { mutableStateOf(state.today) }
@@ -187,9 +189,9 @@ private fun DebtFormDialog(title: String, initial: DebtForm, onDismiss: () -> Un
             DialogColumn {
                 OutlinedTextField(f.name, { f = f.copy(name = it.take(40)) }, label = { Text("Nombre (ej.: Tarjeta Visa)") }, singleLine = true, modifier = Modifier.fillMaxWidth())
                 OutlinedTextField(f.creditor, { f = f.copy(creditor = it.take(40)) }, label = { Text("Entidad o persona") }, singleLine = true, modifier = Modifier.fillMaxWidth())
-                AmountField(f.initialDigits, { f = f.copy(initialDigits = it) }, label = "Valor inicial")
+                AmountField(f.initialDigits, { f = f.copy(initialDigits = it) }, label = "Monto total de la deuda")
                 AmountField(f.balanceDigits, { f = f.copy(balanceDigits = it) }, label = "Saldo pendiente hoy",
-                    supportingText = "Déjalo vacío si es igual al valor inicial")
+                    supportingText = "Déjalo vacío si aún no has pagado nada")
                 ChoiceField("Tipo de tasa", f.rateType, RateType.entries.map { Choice(it, it.label) }, { f = f.copy(rateType = it) })
                 if (f.rateType != RateType.NONE) {
                     OutlinedTextField(
@@ -198,8 +200,14 @@ private fun DebtFormDialog(title: String, initial: DebtForm, onDismiss: () -> Un
                         keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal), modifier = Modifier.fillMaxWidth(),
                     )
                 }
-                AmountField(f.paymentDigits, { f = f.copy(paymentDigits = it) }, label = "Cuota mensual")
-                OutlinedTextField(f.dueDay, { f = f.copy(dueDay = it.filter(Char::isDigit).take(2)) }, label = { Text("Día de pago (1-31, opcional)") },
+                ChoiceField("Frecuencia de la cuota", f.frequency, PaymentFrequency.entries.map { Choice(it, it.label) }, { f = f.copy(frequency = it) })
+                AmountField(f.paymentDigits, { f = f.copy(paymentDigits = it) }, label = "Valor de cada cuota",
+                    supportingText = if (f.frequency == PaymentFrequency.BIWEEKLY) "Lo que pagas cada quincena" else "Lo que pagas cada mes")
+                OutlinedTextField(f.dueDay, { f = f.copy(dueDay = it.filter(Char::isDigit).take(2)) },
+                    label = { Text(if (f.frequency == PaymentFrequency.BIWEEKLY) "Primer día de pago (1-31, opcional)" else "Día de pago (1-31, opcional)") },
+                    supportingText = if (f.frequency == PaymentFrequency.BIWEEKLY) {
+                        { Text("La segunda cuota es 15 días después, por ejemplo 15 y 30.") }
+                    } else null,
                     singleLine = true, keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number), modifier = Modifier.fillMaxWidth())
                 OutlinedTextField(f.installments, { f = f.copy(installments = it.filter(Char::isDigit).take(3)) }, label = { Text("Cuotas pendientes (opcional)") },
                     singleLine = true, keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number), modifier = Modifier.fillMaxWidth())

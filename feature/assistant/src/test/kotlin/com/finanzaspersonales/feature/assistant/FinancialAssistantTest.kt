@@ -56,7 +56,10 @@ class FinancialAssistantTest {
         transactions = TransactionRepository(db, clock)
         val planning = com.finanzaspersonales.core.data.PlanningRepository(db, clock)
         assistant = FinancialAssistant(
-            transactions, planning, com.finanzaspersonales.core.data.OverviewRepository(accounts, planning, transactions, clock), clock,
+            transactions, planning, com.finanzaspersonales.core.data.OverviewRepository(
+                accounts, planning, transactions,
+                com.finanzaspersonales.core.data.UserPreferences(ApplicationProvider.getApplicationContext<Context>()), clock,
+            ), clock,
         )
     }
 

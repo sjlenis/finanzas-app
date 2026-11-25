@@ -51,7 +51,17 @@ class PlanningRepositoryTest {
     }
 
     @After
-    fun tearDown() = db.close()
+    fun tearDown() {
+        db.close()
+        prefsScope.coroutineContext[kotlinx.coroutines.Job]?.cancel()
+    }
+
+    private val prefsScope = kotlinx.coroutines.CoroutineScope(kotlinx.coroutines.Dispatchers.IO + kotlinx.coroutines.SupervisorJob())
+
+    private fun newPrefs(): UserPreferences {
+        val file = java.io.File.createTempFile("prefs", ".preferences_pb").apply { delete() }
+        return UserPreferences(androidx.datastore.preferences.core.PreferenceDataStoreFactory.create(scope = prefsScope) { file })
+    }
 
     private suspend fun accountId(name: String) = accounts.observeAccounts().first().first { it.name == name }.id
     private fun pesos(p: Long) = Money.ofPesos(p)
@@ -149,7 +159,7 @@ class PlanningRepositoryTest {
         planning.saveObligation(null, "Servicios", pesos(300_000), 28, false, null, banco, true)
         planning.saveDebt(null, "Crédito", null, pesos(4_000_000), pesos(4_000_000), 0, RateType.NONE, pesos(400_000), 30, null, null)
         planning.contribute(planning.emergencyFundId(), pesos(200_000), null)
-        val overview = OverviewRepository(accounts, planning, transactions, clock)
+        val overview = OverviewRepository(accounts, planning, transactions, newPrefs(), clock)
 
         val o = overview.observe().first()
         assertEquals(pesos(2_000_000), o.money.total)
@@ -162,5 +172,52 @@ class PlanningRepositoryTest {
         assertEquals(pesos(1_700_000), after.money.total)
         assertEquals(pesos(400_000), after.money.obligations)
         assertEquals(pesos(1_100_000), after.money.available)
+    }
+
+    @Test
+    fun deudaQuincenalTieneDosCuotasAlMes() = runTest {
+        val id = planning.saveDebt(
+            null, "Préstamo", null, pesos(1_000_000), pesos(1_000_000), 0, RateType.NONE, pesos(50_000), 15, null, null,
+            frequency = PaymentFrequency.BIWEEKLY,
+        )
+        val debt = planning.observeDebt(id).first()!!
+        assertEquals(pesos(100_000), debt.monthlyPayment)
+        assertEquals(listOf(15, 30), debt.dueDays)
+        assertEquals(pesos(100_000), planning.observeProfile().first().debtPayments)
+
+        val overview = OverviewRepository(accounts, planning, transactions, newPrefs(), clock)
+        val items = overview.observe().first().monthItems.filter { it.type == UpcomingType.DEBT }
+        assertEquals(2, items.size)
+        assertEquals(listOf(15, 30), items.map { it.date.dayOfMonth })
+
+        // Un pago en el mes cubre la primera quincena; la segunda sigue pendiente.
+        planning.registerDebtPayment(id, pesos(50_000), null, null, java.time.LocalDate.of(2026, 11, 15))
+        val after = overview.observe().first().monthItems.filter { it.type == UpcomingType.DEBT }
+        assertEquals(listOf(true, false), after.map { it.paid })
+    }
+
+    @Test
+    fun pagoEnDolaresSeEstimaConLaTasaYSeRegistraLoCobrado() = runTest {
+        val prefs = newPrefs()
+        val overview = OverviewRepository(accounts, planning, transactions, prefs, clock)
+        val banco = accountId("Bancolombia")
+        // 12,99 dólares = 1.299 centavos de dólar.
+        val id = planning.saveObligation(null, "Streaming", Money(1_299), 28, false, null, banco, true, PayCurrency.USD)
+
+        val sinTasa = overview.observe().first()
+        assertTrue(sinTasa.missingUsdRate)
+        assertEquals(Money(1_299), sinTasa.pending.single().usdAmount)
+
+        prefs.setUsdRate(pesos(4_000))
+        val conTasa = overview.observe().first()
+        assertEquals(pesos(51_960), conTasa.pending.single().amount)
+
+        // En una cuenta hay que decir cuánto cobró el banco en pesos.
+        assertTrue(runCatching { planning.markObligationPaid(id, YearMonth.of(2026, 11), banco) }.isFailure)
+        planning.markObligationPaid(id, YearMonth.of(2026, 11), banco, pesos(53_100))
+        val pagado = overview.observe().first()
+        assertEquals(pesos(-53_100), pagado.money.total)
+        assertEquals(pesos(53_100), pagado.monthItems.single().amount)
+        assertTrue(pagado.pending.isEmpty())
     }
 }

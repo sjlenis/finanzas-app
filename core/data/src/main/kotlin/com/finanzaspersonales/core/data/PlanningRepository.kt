@@ -57,16 +57,17 @@ class PlanningRepository @Inject constructor(
         balance: Money,
         rateBasisPoints: Int,
         rateType: RateType,
-        monthlyPayment: Money,
+        installment: Money,
         dueDay: Int?,
         remainingInstallments: Int?,
         notes: String?,
+        frequency: PaymentFrequency = PaymentFrequency.MONTHLY,
     ): Long = db.withTransaction {
         val clean = name.trim()
         require(clean.isNotEmpty()) { "Escribe un nombre" }
-        require(initial.centavos > 0) { "El valor inicial debe ser mayor que cero" }
+        require(initial.centavos > 0) { "El monto total debe ser mayor que cero" }
         require(!balance.isNegative) { "El saldo no puede ser negativo" }
-        require(monthlyPayment.centavos > 0 || balance.isZero) { "Escribe la cuota mensual" }
+        require(installment.centavos > 0 || balance.isZero) { "Escribe el valor de la cuota" }
         require(rateBasisPoints in 0..100_000) { "Revisa la tasa de interés" }
         require(dueDay == null || dueDay in 1..31) { "El día de pago debe estar entre 1 y 31" }
         val now = clock.millis()
@@ -79,7 +80,8 @@ class PlanningRepository @Inject constructor(
             balanceCentavos = balance.centavos,
             rateBasisPoints = rateBasisPoints,
             rateType = rateType.name,
-            monthlyPaymentCentavos = monthlyPayment.centavos,
+            monthlyPaymentCentavos = installment.centavos,
+            paymentFrequency = frequency.name,
             dueDay = dueDay,
             remainingInstallments = remainingInstallments,
             status = status.name,
@@ -138,11 +140,11 @@ class PlanningRepository @Inject constructor(
             txId ?: 0L
         }
 
-    /** Ids de deudas con al menos un pago registrado en [month]. */
-    fun observeDebtsPaidIn(month: YearMonth): Flow<Set<Long>> {
+    /** Cuántos pagos tiene cada deuda en [month] (una quincenal lleva dos cuotas al mes). */
+    fun observeDebtPaymentCounts(month: YearMonth): Flow<Map<Long, Int>> {
         val from = month.atDay(1).atStartOfDay(BogotaTime.ZONE).toInstant().toEpochMilli()
         val to = month.plusMonths(1).atDay(1).atStartOfDay(BogotaTime.ZONE).toInstant().toEpochMilli()
-        return dao.observeDebtPaymentsBetween(from, to).map { list -> list.map { it.debtId }.toSet() }
+        return dao.observeDebtPaymentsBetween(from, to).map { list -> list.groupingBy { it.debtId }.eachCount() }
     }
 
     // ================================================================= metas y fondo
@@ -274,14 +276,32 @@ class PlanningRepository @Inject constructor(
     // ================================================================= obligaciones
 
     fun observeObligations(): Flow<List<Obligation>> = dao.observeObligations().map { list ->
-        list.map { Obligation(it.id, it.name, Money(it.amountCentavos), it.dayOfMonth, it.isIncome, it.categoryId, it.accountId, it.active) }
+        list.map {
+            Obligation(
+                it.id, it.name, Money(it.amountCentavos), it.dayOfMonth, it.isIncome, it.categoryId, it.accountId, it.active,
+                runCatching { PayCurrency.valueOf(it.currency) }.getOrDefault(PayCurrency.COP),
+            )
+        }
     }
 
     /** Ids de obligaciones ya pagadas (o ingresos ya recibidos) en [month]. */
-    fun observePaidObligations(month: YearMonth): Flow<Set<Long>> =
-        dao.observeObligationPayments(month.toString()).map { list -> list.map { it.obligationId }.toSet() }
+    fun observePaidObligations(month: YearMonth): Flow<Set<Long>> = observeObligationPayments(month).map { it.keys }
 
-    suspend fun saveObligation(id: Long?, name: String, amount: Money, dayOfMonth: Int, isIncome: Boolean, categoryId: Long?, accountId: Long?, active: Boolean): Long =
+    /** Obligaciones pagadas en [month] con el valor real pagado en pesos, si se registró. */
+    fun observeObligationPayments(month: YearMonth): Flow<Map<Long, Money?>> =
+        dao.observeObligationPayments(month.toString()).map { list -> list.associate { it.obligationId to it.amountCentavos?.let(::Money) } }
+
+    suspend fun saveObligation(
+        id: Long?,
+        name: String,
+        amount: Money,
+        dayOfMonth: Int,
+        isIncome: Boolean,
+        categoryId: Long?,
+        accountId: Long?,
+        active: Boolean,
+        currency: PayCurrency = PayCurrency.COP,
+    ): Long =
         db.withTransaction {
             val clean = name.trim()
             require(clean.isNotEmpty()) { "Escribe un nombre" }
@@ -289,7 +309,7 @@ class PlanningRepository @Inject constructor(
             require(dayOfMonth in 1..31) { "El día debe estar entre 1 y 31" }
             val entity = ObligationEntity(
                 id = id ?: 0, name = clean, amountCentavos = amount.centavos, dayOfMonth = dayOfMonth, isIncome = isIncome,
-                categoryId = categoryId, accountId = accountId, active = active,
+                categoryId = categoryId, accountId = accountId, active = active, currency = currency.name,
                 createdAtEpochMs = id?.let { dao.getObligation(it)?.createdAtEpochMs } ?: clock.millis(),
             )
             if (id == null) dao.insertObligation(entity) else { dao.updateObligation(entity); id }
@@ -300,15 +320,21 @@ class PlanningRepository @Inject constructor(
     /**
      * Marca una obligación como pagada en [month]. Si se indica una cuenta, registra
      * también el movimiento (gasto o ingreso) en esa cuenta, en la fecha de hoy.
+     * [paidAmount] es lo que realmente se pagó en pesos; es obligatorio para un pago
+     * en dólares que se registra en una cuenta (el banco cobra con su propia tasa).
      */
-    suspend fun markObligationPaid(obligationId: Long, month: YearMonth, accountId: Long?) = db.withTransaction {
+    suspend fun markObligationPaid(obligationId: Long, month: YearMonth, accountId: Long?, paidAmount: Money? = null) = db.withTransaction {
         val o = requireNotNull(dao.getObligation(obligationId)) { "La obligación no existe" }
+        require(paidAmount == null || paidAmount.centavos > 0) { "El valor pagado debe ser mayor que cero" }
+        val usd = o.currency == PayCurrency.USD.name
+        require(!(usd && accountId != null && paidAmount == null)) { "Escribe cuánto te cobraron en pesos" }
+        val cop = paidAmount?.centavos ?: if (usd) null else o.amountCentavos
         val now = clock.millis()
         val txId = accountId?.let {
             db.transactionDao().insert(
                 TransactionEntity(
                     accountId = it,
-                    amountCentavos = if (o.isIncome) o.amountCentavos else -o.amountCentavos,
+                    amountCentavos = if (o.isIncome) cop!! else -cop!!,
                     kind = if (o.isIncome) TransactionKind.INCOME else TransactionKind.EXPENSE,
                     categoryId = o.categoryId,
                     description = o.name,
@@ -319,7 +345,9 @@ class PlanningRepository @Inject constructor(
                 ),
             )
         }
-        dao.insertObligationPayment(ObligationPaymentEntity(obligationId = obligationId, period = month.toString(), transactionId = txId, paidAtEpochMs = now))
+        dao.insertObligationPayment(
+            ObligationPaymentEntity(obligationId = obligationId, period = month.toString(), transactionId = txId, paidAtEpochMs = now, amountCentavos = cop),
+        )
     }
 
     suspend fun unmarkObligationPaid(obligationId: Long, month: YearMonth) = dao.deleteObligationPayment(obligationId, month.toString())
@@ -371,7 +399,8 @@ class PlanningRepository @Inject constructor(
     private fun DebtEntity.toModel() = Debt(
         id = id, name = name, creditor = creditor, initial = Money(initialCentavos), balance = Money(balanceCentavos),
         rateBasisPoints = rateBasisPoints, rateType = runCatching { RateType.valueOf(rateType) }.getOrDefault(RateType.NONE),
-        monthlyPayment = Money(monthlyPaymentCentavos), dueDay = dueDay, remainingInstallments = remainingInstallments,
+        installment = Money(monthlyPaymentCentavos),
+        frequency = runCatching { PaymentFrequency.valueOf(paymentFrequency) }.getOrDefault(PaymentFrequency.MONTHLY), dueDay = dueDay, remainingInstallments = remainingInstallments,
         status = runCatching { DebtStatus.valueOf(status) }.getOrDefault(DebtStatus.ACTIVE), notes = notes,
     )
 

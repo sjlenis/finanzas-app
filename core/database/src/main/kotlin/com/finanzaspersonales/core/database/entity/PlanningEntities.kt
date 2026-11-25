@@ -20,6 +20,7 @@ data class DebtEntity(
     @ColumnInfo(name = "balance_centavos") val balanceCentavos: Long,
     @ColumnInfo(name = "rate_bp") val rateBasisPoints: Int,
     @ColumnInfo(name = "rate_type") val rateType: String,
+    /** Valor de cada cuota (mensual o quincenal según [paymentFrequency]). */
     @ColumnInfo(name = "monthly_payment_centavos") val monthlyPaymentCentavos: Long,
     /** Día del mes en que vence la cuota (1-31), si aplica. */
     @ColumnInfo(name = "due_day") val dueDay: Int?,
@@ -28,6 +29,8 @@ data class DebtEntity(
     val status: String,
     val notes: String?,
     @ColumnInfo(name = "created_at") val createdAtEpochMs: Long,
+    /** MONTHLY o BIWEEKLY (quincenal). Versión 5. */
+    @ColumnInfo(name = "payment_frequency", defaultValue = "MONTHLY") val paymentFrequency: String = "MONTHLY",
 )
 
 @Entity(
@@ -114,6 +117,11 @@ data class ObligationEntity(
     @ColumnInfo(name = "account_id") val accountId: Long?,
     val active: Boolean,
     @ColumnInfo(name = "created_at") val createdAtEpochMs: Long,
+    /**
+     * COP o USD. Si es USD, [amountCentavos] son centavos de dólar y el valor en pesos
+     * se estima con la tasa que configures; al pagar se registra lo que realmente cobraron.
+     */
+    @ColumnInfo(defaultValue = "COP") val currency: String = "COP",
 )
 
 /** Marca que una obligación ya se pagó (o el ingreso ya llegó) en un mes ("2026-11"). */
@@ -128,4 +136,6 @@ data class ObligationPaymentEntity(
     val period: String,
     @ColumnInfo(name = "transaction_id") val transactionId: Long?,
     @ColumnInfo(name = "paid_at") val paidAtEpochMs: Long,
+    /** Valor real pagado en pesos (útil para cobros en dólares). Versión 5. */
+    @ColumnInfo(name = "amount_centavos") val amountCentavos: Long? = null,
 )

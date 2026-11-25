@@ -31,6 +31,8 @@ import com.finanzaspersonales.core.database.entity.TransferEntity
  * Versión 3 (Fase 5): muestras opcionales de notificaciones bancarias.
  * Versión 4 (Fase 6): deudas, metas y fondo de emergencia, presupuestos y obligaciones.
  *   Se agrega con una migración automática de Room (solo crea tablas nuevas).
+ * Versión 5: cuotas quincenales en deudas, pagos fijos en dólares y valor real pagado
+ *   (migración automática: solo agrega columnas con valor por defecto).
  * La importación de extractos llegará con su propia migración, para no crear tablas
  * que todavía no usa ninguna pantalla.
  */
@@ -51,9 +53,9 @@ import com.finanzaspersonales.core.database.entity.TransferEntity
         ObligationEntity::class,
         ObligationPaymentEntity::class,
     ],
-    version = 4,
+    version = 5,
     exportSchema = true,
-    autoMigrations = [AutoMigration(from = 3, to = 4)],
+    autoMigrations = [AutoMigration(from = 3, to = 4), AutoMigration(from = 4, to = 5)],
 )
 @TypeConverters(Converters::class)
 abstract class FinanzasDatabase : RoomDatabase() {

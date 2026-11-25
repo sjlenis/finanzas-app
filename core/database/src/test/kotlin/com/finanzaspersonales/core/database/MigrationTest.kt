@@ -35,11 +35,30 @@ class MigrationTest {
 
     private val v4Tables = listOf("obligation_payments", "obligations", "budgets", "goal_contributions", "savings_goals", "debt_payments", "debts")
 
+    private val v5Changed = listOf(
+        "obligation_payments" to listOf(
+            "CREATE TABLE `obligation_payments` (`id` INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL, `obligation_id` INTEGER NOT NULL, `period` TEXT NOT NULL, `transaction_id` INTEGER, `paid_at` INTEGER NOT NULL, FOREIGN KEY(`obligation_id`) REFERENCES `obligations`(`id`) ON UPDATE NO ACTION ON DELETE CASCADE )",
+            "CREATE UNIQUE INDEX `index_obligation_payments_obligation_id_period` ON `obligation_payments` (`obligation_id`, `period`)",
+        ),
+        "obligations" to listOf(
+            "CREATE TABLE `obligations` (`id` INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL, `name` TEXT NOT NULL, `amount_centavos` INTEGER NOT NULL, `day_of_month` INTEGER NOT NULL, `is_income` INTEGER NOT NULL, `category_id` INTEGER, `account_id` INTEGER, `active` INTEGER NOT NULL, `created_at` INTEGER NOT NULL, FOREIGN KEY(`category_id`) REFERENCES `categories`(`id`) ON UPDATE NO ACTION ON DELETE SET NULL )",
+            "CREATE INDEX `index_obligations_category_id` ON `obligations` (`category_id`)",
+        ),
+        "debts" to listOf(
+            "CREATE TABLE `debts` (`id` INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL, `name` TEXT NOT NULL, `creditor` TEXT, `initial_centavos` INTEGER NOT NULL, `balance_centavos` INTEGER NOT NULL, `rate_bp` INTEGER NOT NULL, `rate_type` TEXT NOT NULL, `monthly_payment_centavos` INTEGER NOT NULL, `due_day` INTEGER, `remaining_installments` INTEGER, `status` TEXT NOT NULL, `notes` TEXT, `created_at` INTEGER NOT NULL)",
+        ),
+    )
+
     /** Deja la base como estaba en [version], borrando las tablas que llegaron después. */
     private fun downgradeTo(version: Int) {
         open().apply { openHelper.writableDatabase; close() }
         SQLiteDatabase.openDatabase(context.getDatabasePath(name).path, null, SQLiteDatabase.OPEN_READWRITE).use { raw ->
-            v4Tables.forEach { raw.execSQL("DROP TABLE $it") }
+            if (version >= 4) {
+                // Tablas que cambiaron en la versión 5, tal como eran en la 4.
+                v5Changed.forEach { (table, sql) -> raw.execSQL("DROP TABLE $table"); sql.forEach(raw::execSQL) }
+            } else {
+                v4Tables.forEach { raw.execSQL("DROP TABLE $it") }
+            }
             if (version < 3) raw.execSQL("DROP TABLE notification_samples")
             if (version < 2) raw.execSQL("DROP TABLE chat_messages")
             raw.version = version
@@ -101,6 +120,28 @@ class MigrationTest {
             )
             assertEquals(id, db.planningDao().getDebt(id)?.id)
             assertEquals(DefaultData.accounts.size, db.accountDao().observeActiveWithBalance().first().size)
+        } finally {
+            db.close()
+        }
+    }
+
+    @Test
+    fun migrarDe4a5ConservaDeudasYPagosFijos() = runTest {
+        downgradeTo(4)
+        SQLiteDatabase.openDatabase(context.getDatabasePath(name).path, null, SQLiteDatabase.OPEN_READWRITE).use { raw ->
+            raw.execSQL(
+                "INSERT INTO debts (name, initial_centavos, balance_centavos, rate_bp, rate_type, monthly_payment_centavos, status, created_at) " +
+                    "VALUES ('Tarjeta', 100, 100, 0, 'NONE', 10, 'ACTIVE', 1)",
+            )
+            raw.execSQL("INSERT INTO obligations (name, amount_centavos, day_of_month, is_income, active, created_at) VALUES ('Arriendo', 500, 5, 0, 1, 1)")
+        }
+        val db = open()
+        try {
+            val debt = db.planningDao().observeDebts().first().single()
+            assertEquals("MONTHLY", debt.paymentFrequency)
+            val obligation = db.planningDao().observeObligations().first().single()
+            assertEquals("COP", obligation.currency)
+            assertEquals(500L, obligation.amountCentavos)
         } finally {
             db.close()
         }
