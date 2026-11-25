@@ -41,6 +41,7 @@ class MessageParser {
         // Se quita la fecha antes de buscar el valor para que "el 15" no se lea como $15.
         val withoutDate = date.range?.let { text.replaceRange(it, " ").replace(Regex("\\s+"), " ") } ?: text
         val amount = AmountExtractor.find(withoutDate)
+        parseSaving(text, amount?.let { withoutDate.replaceRange(it.range, " ") } ?: withoutDate, amount?.money)?.let { return it }
         val explicitKind = detectKind(text)
         val kind = explicitKind ?: if (amount != null) DraftKind.EXPENSE else null
             ?: return ParseResult.NotUnderstood(
@@ -70,6 +71,30 @@ class MessageParser {
                 counterparty = counterparty?.capitalizeFirst(),
             ),
         )
+    }
+
+    private val savingTarget = Regex("\\b(fondo de emergencias?|fondo|emergencias?|ahorros?|meta|metas|alcancia)\\b")
+    private val savingVerb = Regex("\\b(ahorre|aparte|guarde|aporte|abone|meti|puse|deposite|consigne|separe|reserve)\\b")
+    private val savingOutVerb = Regex("\\b(saque|retire|use|tome|quite)\\b")
+
+    /**
+     * "Aparté 350.000 para el fondo de emergencia", "ahorré 50 mil para la moto",
+     * "saqué 100.000 del fondo". Un aporte al ahorro no es un gasto.
+     */
+    private fun parseSaving(text: String, withoutAmount: String, amount: com.finanzaspersonales.core.model.Money?): ParseResult.Saving? {
+        val emergency = Regex("\\b(fondo de emergencias?|fondo|emergencias?)\\b").containsMatchIn(text)
+        val startsWithSave = Regex("^(ahorre|aparte|separe|reserve)\\b").containsMatchIn(text)
+        val toSavings = savingVerb.containsMatchIn(text) && (savingTarget.containsMatchIn(text) || startsWithSave)
+        // "Saqué 100.000 del fondo" / "usé 200.000 de los ahorros": retiro del ahorro, no de un cajero.
+        val fromSavings = savingOutVerb.containsMatchIn(text) &&
+            Regex("\\b(del|de mi|de la|de los|de mis)\\s+(fondo|ahorros?|meta|alcancia)\\b").containsMatchIn(text)
+        if (!toSavings && !fromSavings) return null
+        // "Gasté 300.000 en una emergencia" es un gasto real: sin verbo de ahorro no entra aquí.
+        val goalText = if (emergency) null else Regex("\\b(?:para|en|a)\\s+(?:la|el|mi|una|un)?\\s*(?:meta\\s+(?:de\\s+)?)?([a-z ]{2,30})")
+            .find(withoutAmount)?.groupValues?.get(1)?.trim()
+            ?.replace(stopTail, "")?.trim()
+            ?.takeIf { it.isNotEmpty() && it !in setOf("ahorro", "ahorros", "meta", "metas", "alcancia", "pesos", "mil") }
+        return ParseResult.Saving(amount = amount, emergency = emergency, goalText = goalText, withdraw = fromSavings && !toSavings)
     }
 
     private fun detectKind(text: String): DraftKind? = when {

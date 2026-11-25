@@ -161,6 +161,7 @@ fun EmergencyFundRoute(onBack: () -> Unit, viewModel: EmergencyFundViewModel = h
     val message by viewModel.message.collectAsStateWithLifecycle()
     var configuring by remember { mutableStateOf(false) }
     var moving by remember { mutableStateOf<Boolean?>(null) }
+    var emptying by remember { mutableStateOf(false) }
     val plan = state.plan
     val fund = state.fund
 
@@ -175,6 +176,21 @@ fun EmergencyFundRoute(onBack: () -> Unit, viewModel: EmergencyFundViewModel = h
                     Button(onClick = { moving = false }) { Text("Aportar") }
                     OutlinedButton(onClick = { moving = true }, enabled = plan.saved.centavos > 0) { Text("Usar fondo") }
                 }
+                if (plan.saved.centavos > 0) {
+                    TextButton(onClick = { emptying = true }) { Text("Vaciar fondo (dejar en \$0)") }
+                }
+            }
+        }
+        item {
+            FinanceCard(title = "¿Cuenta como gasto?") {
+                Note(
+                    "No. Aportar al fondo no saca dinero de tus cuentas ni crea un gasto: solo marca una parte de tu saldo " +
+                        "como reservada. Por eso en Inicio la ves restada del dinero disponible, pero el total en cuentas no cambia.",
+                )
+                Note(
+                    "Si además registraste ese aporte como un gasto en Movimientos o en el asistente, el dinero se descuenta dos veces. " +
+                        "En ese caso borra ese gasto en Movimientos.",
+                )
             }
         }
         item {
@@ -240,6 +256,20 @@ fun EmergencyFundRoute(onBack: () -> Unit, viewModel: EmergencyFundViewModel = h
             note = if (withdraw) "Úsalo solo para emergencias reales: salud, pérdida de ingresos o daños urgentes." else RESERVE_NOTE,
             onDismiss = { moving = null },
         ) { viewModel.contribute(it, withdraw) { moving = null } }
+    }
+    if (emptying && plan != null) {
+        AlertDialog(
+            onDismissRequest = { emptying = false },
+            title = { Text("¿Vaciar el fondo?") },
+            text = {
+                Text(
+                    "El fondo quedará en \$0 (hoy tiene ${plan.saved.formatCop()}). Tus cuentas no cambian, porque el dinero nunca salió de ellas: " +
+                        "solo deja de estar apartado y vuelve a contar como disponible. Tu meta y tu aporte mensual se mantienen.",
+                )
+            },
+            confirmButton = { TextButton(onClick = { viewModel.empty { emptying = false } }) { Text("Vaciar") } },
+            dismissButton = { TextButton(onClick = { emptying = false }) { Text("Cancelar") } },
+        )
     }
     message?.let { MessageDialog(it, viewModel::clearMessage) }
 }

@@ -248,6 +248,19 @@ class PlanningRepository @Inject constructor(
         audit("goal", goalId, if (amount.isNegative) "withdraw" else "contribute", amount.formatCop(), now)
     }
 
+    /**
+     * Deja la meta o el fondo en $0. Se guarda como un retiro por el total, así el historial
+     * conserva lo que pasó. No toca los saldos de las cuentas: el dinero nunca salió de ellas.
+     */
+    suspend fun emptyGoal(goalId: Long) = db.withTransaction {
+        val saved = Money(dao.savedIn(goalId))
+        if (saved.centavos <= 0) return@withTransaction
+        val now = clock.millis()
+        dao.insertContribution(GoalContributionEntity(goalId = goalId, amountCentavos = -saved.centavos, note = "Vaciado", createdAtEpochMs = now))
+        refreshGoalStatus(goalId)
+        audit("goal", goalId, "empty", saved.formatCop(), now)
+    }
+
     private suspend fun refreshGoalStatus(goalId: Long) {
         val goal = dao.getGoal(goalId) ?: return
         if (goal.isEmergencyFund || goal.status == GoalStatus.PAUSED.name) return

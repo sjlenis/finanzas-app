@@ -42,6 +42,7 @@ class FinancialAssistantTest {
     private lateinit var categories: CategoryRepository
     private lateinit var transactions: TransactionRepository
     private lateinit var assistant: FinancialAssistant
+    private lateinit var planning: com.finanzaspersonales.core.data.PlanningRepository
 
     @Before
     fun setUp() {
@@ -54,7 +55,7 @@ class FinancialAssistantTest {
         accounts = AccountRepository(db, clock)
         categories = CategoryRepository(db)
         transactions = TransactionRepository(db, clock)
-        val planning = com.finanzaspersonales.core.data.PlanningRepository(db, clock)
+        planning = com.finanzaspersonales.core.data.PlanningRepository(db, clock)
         val overview = com.finanzaspersonales.core.data.OverviewRepository(
             accounts, planning, transactions,
             com.finanzaspersonales.core.data.UserPreferences(ApplicationProvider.getApplicationContext<Context>()), clock,
@@ -204,5 +205,24 @@ class FinancialAssistantTest {
         assertTrue(worth, worth.contains("\$400.000"))
         val compare = assistant.reply("¿Cómo voy comparado con el mes pasado?", d).text
         assertTrue(compare, compare.contains("No tengo movimientos del mes pasado"))
+    }
+
+    @Test
+    fun aporteAlFondoDesdeElChatNoEsGasto() = runTest {
+        val d = data(defaultName = "Nequi")
+        val reply = assistant.reply("Aparté 350.000 para el fondo de emergencia", d)
+        val card = requireNotNull(reply.card)
+        assertEquals(DraftKind.SAVING, card.kind)
+        assertEquals("Fondo de emergencia", card.goalName)
+
+        assertNull(assistant.save(card, d))
+        // Ninguna cuenta cambia y no se crea ningún movimiento: solo queda apartado.
+        assertEquals(Money.ofPesos(0), balance("Nequi"))
+        assertTrue(transactions.observe(all).first().isEmpty())
+        val fund = planning.observeGoals().first().single { it.isEmergencyFund }
+        assertEquals(Money.ofPesos(350_000), fund.saved)
+
+        planning.emptyGoal(fund.id)
+        assertEquals(Money.ofPesos(0), planning.observeGoals().first().single { it.isEmergencyFund }.saved)
     }
 }

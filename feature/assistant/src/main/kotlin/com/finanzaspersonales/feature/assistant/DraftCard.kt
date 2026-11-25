@@ -38,8 +38,11 @@ data class DraftCard(
     val toAccountId: Long? = null,
     val toAccountName: String? = null,
     val counterparty: String? = null,
+    /** Solo para ahorro: el fondo de emergencia o la meta. */
+    val goalId: Long? = null,
+    val goalName: String? = null,
 ) {
-    val usesCategory: Boolean get() = kind != DraftKind.WITHDRAWAL
+    val usesCategory: Boolean get() = kind != DraftKind.WITHDRAWAL && !kind.isSaving
 
     fun toJson(): String = JSONObject().apply {
         put("v", 1)
@@ -55,6 +58,8 @@ data class DraftCard(
         toAccountId?.let { put("toAccountId", it) }
         toAccountName?.let { put("toAccountName", it) }
         counterparty?.let { put("counterparty", it) }
+        goalId?.let { put("goalId", it) }
+        goalName?.let { put("goalName", it) }
     }.toString()
 
     companion object {
@@ -74,6 +79,8 @@ data class DraftCard(
                 toAccountId = if (o.has("toAccountId")) o.getLong("toAccountId") else null,
                 toAccountName = o.optString("toAccountName").ifEmpty { null },
                 counterparty = o.optString("counterparty").ifEmpty { null },
+                goalId = if (o.has("goalId")) o.getLong("goalId") else null,
+                goalName = o.optString("goalName").ifEmpty { null },
             )
         }.getOrNull()
     }

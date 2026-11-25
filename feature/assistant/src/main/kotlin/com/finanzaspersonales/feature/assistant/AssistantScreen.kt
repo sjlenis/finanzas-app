@@ -269,13 +269,23 @@ private fun ConfirmationCard(
                 highlight = card.amount == null,
             )
             Field("Fecha", if (card.date == today) "Hoy, ${formatShortDate(card.date)}" else formatShortDate(card.date))
-            if (card.kind == DraftKind.WITHDRAWAL) {
+            if (card.kind.isSaving) {
+                Field(if (card.kind == DraftKind.SAVING) "Hacia" else "Desde", card.goalName ?: "Sin meta")
+            } else if (card.kind == DraftKind.WITHDRAWAL) {
                 Field("Desde", accountLabel(card))
                 Field("Hacia", card.toAccountName ?: "Sin cuenta de efectivo")
             } else {
                 Field("Cuenta", accountLabel(card))
             }
             card.counterparty?.let { Field("Persona", it) }
+            if (card.kind.isSaving) {
+                Text(
+                    "No es un gasto: el dinero sigue en tus cuentas y solo " +
+                        (if (card.kind == DraftKind.SAVING) "queda apartado." else "deja de estar apartado."),
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+            }
             if (card.kind == DraftKind.LOAN_GIVEN || card.kind == DraftKind.LOAN_RECEIVED || card.kind == DraftKind.WITHDRAWAL) {
                 Text(
                     "No cuenta como ingreso ni como gasto.",
@@ -302,7 +312,9 @@ private fun ConfirmationCard(
                         }
                     }
                     Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                        OutlinedButton(onClick = onEdit, enabled = enabled, modifier = Modifier.weight(1f)) { Text("Editar") }
+                        if (!card.kind.isSaving) {
+                            OutlinedButton(onClick = onEdit, enabled = enabled, modifier = Modifier.weight(1f)) { Text("Editar") }
+                        }
                         TextButton(onClick = onCancel, enabled = enabled, modifier = Modifier.weight(1f)) { Text("Cancelar") }
                     }
                 }
