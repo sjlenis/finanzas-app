@@ -30,6 +30,7 @@ dependencies {
     api(project(":core:common"))
     api(project(":core:database"))
     implementation(project(":engine:notifications"))
+    api(project(":engine:finance"))
     implementation(libs.datastore.preferences)
     implementation(libs.hilt.android)
     ksp(libs.hilt.compiler)

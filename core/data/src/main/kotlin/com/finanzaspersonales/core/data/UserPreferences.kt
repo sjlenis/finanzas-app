@@ -47,4 +47,19 @@ class UserPreferences internal constructor(
     suspend fun setNotificationSamples(enabled: Boolean) {
         store.edit { it[samplesKey] = enabled }
     }
+
+    private val usdRateKey = longPreferencesKey("usd_rate_centavos")
+
+    /**
+     * Pesos por 1 dólar (en centavos) para estimar pagos fijos en dólares. La escribes tú
+     * o se ajusta con lo que realmente te cobraron; la app no la consulta en internet.
+     */
+    val usdRate: Flow<com.finanzaspersonales.core.model.Money?> = store.data.map { prefs ->
+        prefs[usdRateKey]?.takeIf { it > 0 }?.let { com.finanzaspersonales.core.model.Money(it) }
+    }
+
+    suspend fun setUsdRate(rate: com.finanzaspersonales.core.model.Money) {
+        require(rate.centavos > 0) { "La tasa debe ser mayor que cero" }
+        store.edit { it[usdRateKey] = rate.centavos }
+    }
 }

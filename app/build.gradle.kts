@@ -19,8 +19,8 @@ android {
         // Android 10+: cubre teléfonos de gama media actuales y de los últimos años.
         minSdk = 29
         targetSdk = 36
-        versionCode = 5
-        versionName = "0.5.0"
+        versionCode = 8
+        versionName = "0.7.1"
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
     }
 
@@ -72,6 +72,7 @@ dependencies {
     implementation(project(":feature:profile"))
     implementation(project(":feature:accounts"))
     implementation(project(":feature:settings"))
+    implementation(project(":feature:planning"))
     implementation(project(":engine:notifications"))
     implementation(libs.biometric)
 

@@ -54,7 +54,13 @@ class FinancialAssistantTest {
         accounts = AccountRepository(db, clock)
         categories = CategoryRepository(db)
         transactions = TransactionRepository(db, clock)
-        assistant = FinancialAssistant(transactions, clock)
+        val planning = com.finanzaspersonales.core.data.PlanningRepository(db, clock)
+        assistant = FinancialAssistant(
+            transactions, planning, com.finanzaspersonales.core.data.OverviewRepository(
+                accounts, planning, transactions,
+                com.finanzaspersonales.core.data.UserPreferences(ApplicationProvider.getApplicationContext<Context>()), clock,
+            ), clock,
+        )
     }
 
     @After
@@ -136,9 +142,18 @@ class FinancialAssistantTest {
     }
 
     @Test
-    fun lasConsultasDeFase6NoInventanDatos() = runTest {
+    fun proximosPagosSinDeudasNoInventaDatos() = runTest {
         val answer = assistant.reply("¿Cuáles son mis próximos pagos?", data()).text
-        assertTrue(answer, answer.contains("Fase 6"))
+        assertTrue(answer, answer.contains("No tienes pagos registrados"))
+    }
+
+    @Test
+    fun cuantoPuedoGastarUsaElDineroDisponible() = runTest {
+        val d = data("Nequi")
+        assistant.save(requireNotNull(assistant.reply("Me pagaron 400 mil", d).card), d)
+        val answer = assistant.reply("¿Cuánto puedo gastar esta semana?", d).text
+        assertTrue(answer, answer.contains("por semana"))
+        assertTrue(answer, answer.contains("400.000"))
     }
 
     @Test

@@ -43,6 +43,13 @@ import com.finanzaspersonales.feature.accounts.AccountDetailRoute
 import com.finanzaspersonales.feature.settings.SecuritySettingsRoute
 import com.finanzaspersonales.feature.settings.NotificationSettingsRoute
 import com.finanzaspersonales.feature.transactions.PendingRoute
+import com.finanzaspersonales.feature.planning.CalendarRoute
+import com.finanzaspersonales.feature.planning.DebtDetailRoute
+import com.finanzaspersonales.feature.planning.DebtDetailViewModel
+import com.finanzaspersonales.feature.planning.DebtPlanRoute
+import com.finanzaspersonales.feature.planning.DebtsRoute
+import com.finanzaspersonales.feature.planning.EmergencyFundRoute
+import com.finanzaspersonales.feature.planning.GoalsRoute
 import androidx.navigation.NavType
 import androidx.navigation.navArgument
 
@@ -57,6 +64,13 @@ object Routes {
     const val SECURITY = "seguridad"
     const val NOTIFICATIONS = "notificaciones"
     const val PENDING = "por-revisar"
+    const val DEBTS = "deudas"
+    const val DEBT = "deuda/{debtId}"
+    fun debt(id: Long) = "deuda/$id"
+    const val DEBT_PLAN = "plan-deudas"
+    const val GOALS = "metas"
+    const val EMERGENCY = "fondo-emergencia"
+    const val CALENDAR = "calendario"
 }
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -72,14 +86,7 @@ fun FinanzasApp() {
         topBar = { if (current != null) CenterAlignedTopAppBar(title = { Text(current.label) }) },
         bottomBar = {
             if (current != null) {
-                FinanzasBottomBar(current = current) { destination ->
-                    navController.navigate(destination.route) {
-                        // Navegación estándar de pestañas: no apila pantallas y conserva su estado.
-                        popUpTo(navController.graph.findStartDestination().id) { saveState = true }
-                        launchSingleTop = true
-                        restoreState = true
-                    }
-                }
+                FinanzasBottomBar(current = current) { destination -> navController.navigateToTab(destination) }
             }
         },
     ) { padding ->
@@ -96,13 +103,15 @@ fun FinanzasApp() {
                     onOpenAccount = { navController.navigate(Routes.account(it)) },
                     onOpenSecurity = { navController.navigate(Routes.SECURITY) },
                     onOpenPending = { navController.navigate(Routes.PENDING) },
+                    onOpenCalendar = { navController.navigate(Routes.CALENDAR) },
+                    onOpenBudgets = { navController.navigateToTab(TopLevelDestination.BUDGETS) },
                 )
             }
             composable(TopLevelDestination.TRANSACTIONS.route) {
                 TransactionsRoute(onAdd = { navController.navigate(Routes.entry()) }, onOpen = openEntry)
             }
             composable(TopLevelDestination.ASSISTANT.route) { AssistantRoute() }
-            composable(TopLevelDestination.BUDGETS.route) { BudgetsRoute() }
+            composable(TopLevelDestination.BUDGETS.route) { BudgetsRoute(onCalendar = { navController.navigate(Routes.CALENDAR) }) }
             composable(TopLevelDestination.PROFILE.route) {
                 ProfileRoute(
                     onAccounts = { navController.navigate(Routes.ACCOUNTS) },
@@ -110,6 +119,10 @@ fun FinanzasApp() {
                     onSecurity = { navController.navigate(Routes.SECURITY) },
                     onNotifications = { navController.navigate(Routes.NOTIFICATIONS) },
                     onPending = { navController.navigate(Routes.PENDING) },
+                    onDebts = { navController.navigate(Routes.DEBTS) },
+                    onGoals = { navController.navigate(Routes.GOALS) },
+                    onEmergencyFund = { navController.navigate(Routes.EMERGENCY) },
+                    onCalendar = { navController.navigate(Routes.CALENDAR) },
                 )
             }
             composable(
@@ -126,6 +139,16 @@ fun FinanzasApp() {
             composable(Routes.SECURITY) { SecuritySettingsRoute(onBack = back) }
             composable(Routes.NOTIFICATIONS) { NotificationSettingsRoute(onBack = back) }
             composable(Routes.PENDING) { PendingRoute(onBack = back, onEdit = openEntry) }
+            composable(Routes.DEBTS) {
+                DebtsRoute(onBack = back, onOpen = { navController.navigate(Routes.debt(it)) }, onPlan = { navController.navigate(Routes.DEBT_PLAN) })
+            }
+            composable(Routes.DEBT, arguments = listOf(navArgument(DebtDetailViewModel.ARG_DEBT_ID) { type = NavType.LongType })) {
+                DebtDetailRoute(onBack = back)
+            }
+            composable(Routes.DEBT_PLAN) { DebtPlanRoute(onBack = back) }
+            composable(Routes.GOALS) { GoalsRoute(onBack = back) }
+            composable(Routes.EMERGENCY) { EmergencyFundRoute(onBack = back) }
+            composable(Routes.CALENDAR) { CalendarRoute(onBack = back, onOpenDebt = { navController.navigate(Routes.debt(it)) }) }
         }
     }
 }
@@ -172,5 +195,14 @@ fun FinanzasBottomBar(
                 },
             )
         }
+    }
+}
+
+/** Navegación estándar de pestañas: no apila pantallas y conserva su estado. */
+private fun androidx.navigation.NavHostController.navigateToTab(destination: TopLevelDestination) {
+    navigate(destination.route) {
+        popUpTo(graph.findStartDestination().id) { saveState = true }
+        launchSingleTop = true
+        restoreState = true
     }
 }
