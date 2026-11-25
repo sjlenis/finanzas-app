@@ -37,4 +37,13 @@ class StatisticsTest {
         val nueva = Statistics.DebtHistory(LocalDate.of(2026, 11, 2), pesos(500_000), emptyList())
         assertEquals(listOf(pesos(1_000_000), pesos(900_000), pesos(1_300_000)), Statistics.debtByMonth(listOf(tarjeta, nueva), months))
     }
+
+    @Test
+    fun cuotaEstimadaDelCreditoDelEjemplo() {
+        // $2.583.328,84 al 39,11 % E.A. en 27 cuotas: unos $137.400 de cuota sin seguro.
+        val rate = Rates.monthlyRate(3911, RateType.EFFECTIVE_ANNUAL)
+        val cuota = Amortization.installment(Money(258_332_884), rate, 27)
+        org.junit.Assert.assertTrue(cuota.toString(), cuota.pesos in 137_000..138_000)
+        assertEquals(pesos(100_000), Amortization.installment(pesos(1_200_000), java.math.BigDecimal.ZERO, 12))
+    }
 }

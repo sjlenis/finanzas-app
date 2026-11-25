@@ -24,6 +24,7 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.Send
 import androidx.compose.material.icons.outlined.CheckCircle
 import androidx.compose.material.icons.outlined.DeleteSweep
+import androidx.compose.material.icons.outlined.PhotoCamera
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.AssistChip
 import androidx.compose.material3.Button
@@ -73,7 +74,7 @@ private val quickActions = listOf(
 )
 
 @Composable
-fun AssistantRoute(viewModel: AssistantViewModel = hiltViewModel()) {
+fun AssistantRoute(onScanPhoto: () -> Unit = {}, viewModel: AssistantViewModel = hiltViewModel()) {
     val state by viewModel.state.collectAsStateWithLifecycle()
     AssistantScreen(
         state = state,
@@ -83,6 +84,7 @@ fun AssistantRoute(viewModel: AssistantViewModel = hiltViewModel()) {
         onEdit = viewModel::startEdit,
         onDefaultAccount = { viewModel.setDefaultAccount(it) },
         onClearHistory = { viewModel.clearHistory() },
+        onScanPhoto = onScanPhoto,
     )
     state.editing?.let { item ->
         EditCardDialog(
@@ -103,6 +105,7 @@ fun AssistantScreen(
     onEdit: (Long) -> Unit,
     onDefaultAccount: (Long) -> Unit,
     onClearHistory: () -> Unit,
+    onScanPhoto: () -> Unit = {},
 ) {
     var input by remember { mutableStateOf(TextFieldValue("")) }
     var confirmClear by rememberSaveable { mutableStateOf(false) }
@@ -131,6 +134,9 @@ fun AssistantScreen(
                 onSelect = onDefaultAccount,
                 modifier = Modifier.weight(1f),
             )
+            IconButton(onClick = onScanPhoto) {
+                Icon(Icons.Outlined.PhotoCamera, contentDescription = "Registrar desde una foto")
+            }
             IconButton(onClick = { confirmClear = true }, enabled = state.messages.isNotEmpty()) {
                 Icon(Icons.Outlined.DeleteSweep, contentDescription = "Borrar historial del chat")
             }

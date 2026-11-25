@@ -51,6 +51,7 @@ import com.finanzaspersonales.feature.planning.DebtsRoute
 import com.finanzaspersonales.feature.planning.EmergencyFundRoute
 import com.finanzaspersonales.feature.planning.GoalsRoute
 import com.finanzaspersonales.feature.planning.InsightsRoute
+import com.finanzaspersonales.feature.planning.ScanRoute
 import com.finanzaspersonales.feature.planning.StatisticsRoute
 import androidx.navigation.NavType
 import androidx.navigation.navArgument
@@ -75,6 +76,7 @@ object Routes {
     const val CALENDAR = "calendario"
     const val INSIGHTS = "analisis"
     const val STATISTICS = "estadisticas"
+    const val SCAN = "leer-foto"
 }
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -116,7 +118,7 @@ fun FinanzasApp() {
             composable(TopLevelDestination.TRANSACTIONS.route) {
                 TransactionsRoute(onAdd = { navController.navigate(Routes.entry()) }, onOpen = openEntry)
             }
-            composable(TopLevelDestination.ASSISTANT.route) { AssistantRoute() }
+            composable(TopLevelDestination.ASSISTANT.route) { AssistantRoute(onScanPhoto = { navController.navigate(Routes.SCAN) }) }
             composable(TopLevelDestination.BUDGETS.route) { BudgetsRoute(onCalendar = { navController.navigate(Routes.CALENDAR) }) }
             composable(TopLevelDestination.PROFILE.route) {
                 ProfileRoute(
@@ -148,7 +150,12 @@ fun FinanzasApp() {
             composable(Routes.NOTIFICATIONS) { NotificationSettingsRoute(onBack = back) }
             composable(Routes.PENDING) { PendingRoute(onBack = back, onEdit = openEntry) }
             composable(Routes.DEBTS) {
-                DebtsRoute(onBack = back, onOpen = { navController.navigate(Routes.debt(it)) }, onPlan = { navController.navigate(Routes.DEBT_PLAN) })
+                DebtsRoute(
+                    onBack = back,
+                    onOpen = { navController.navigate(Routes.debt(it)) },
+                    onPlan = { navController.navigate(Routes.DEBT_PLAN) },
+                    onScanPhoto = { navController.navigate(Routes.SCAN) },
+                )
             }
             composable(Routes.DEBT, arguments = listOf(navArgument(DebtDetailViewModel.ARG_DEBT_ID) { type = NavType.LongType })) {
                 DebtDetailRoute(onBack = back)
@@ -158,6 +165,7 @@ fun FinanzasApp() {
             composable(Routes.EMERGENCY) { EmergencyFundRoute(onBack = back) }
             composable(Routes.INSIGHTS) { InsightsRoute(onBack = back) }
             composable(Routes.STATISTICS) { StatisticsRoute(onBack = back) }
+            composable(Routes.SCAN) { ScanRoute(onBack = back) }
             composable(Routes.CALENDAR) { CalendarRoute(onBack = back, onOpenDebt = { navController.navigate(Routes.debt(it)) }) }
         }
     }

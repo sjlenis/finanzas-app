@@ -52,7 +52,13 @@ private fun Debt.rateLabel(): String = when (rateType) {
 }
 
 @Composable
-fun DebtsRoute(onBack: () -> Unit, onOpen: (Long) -> Unit, onPlan: () -> Unit, viewModel: DebtsViewModel = hiltViewModel()) {
+fun DebtsRoute(
+    onBack: () -> Unit,
+    onOpen: (Long) -> Unit,
+    onPlan: () -> Unit,
+    onScanPhoto: () -> Unit = {},
+    viewModel: DebtsViewModel = hiltViewModel(),
+) {
     val state by viewModel.state.collectAsStateWithLifecycle()
     val message by viewModel.message.collectAsStateWithLifecycle()
     var adding by remember { mutableStateOf(false) }
@@ -66,6 +72,7 @@ fun DebtsRoute(onBack: () -> Unit, onOpen: (Long) -> Unit, onPlan: () -> Unit, v
                         "y qué estrategia te ahorra más intereses.",
                 )
             }
+            item { OutlinedButton(onClick = onScanPhoto, modifier = Modifier.fillMaxWidth()) { Text("Registrar desde una foto") } }
             return@PlanningScaffold
         }
         item {
@@ -75,6 +82,7 @@ fun DebtsRoute(onBack: () -> Unit, onOpen: (Long) -> Unit, onPlan: () -> Unit, v
                 Button(onClick = onPlan, enabled = state.active.isNotEmpty(), modifier = Modifier.fillMaxWidth()) {
                     Text("Ver plan para salir de deudas")
                 }
+                OutlinedButton(onClick = onScanPhoto, modifier = Modifier.fillMaxWidth()) { Text("Registrar o actualizar desde una foto") }
             }
         }
         items(state.debts, key = { it.id }) { debt -> DebtCard(debt, onClick = { onOpen(debt.id) }) }
@@ -180,7 +188,7 @@ fun DebtDetailRoute(onBack: () -> Unit, viewModel: DebtDetailViewModel = hiltVie
 }
 
 @Composable
-private fun DebtFormDialog(title: String, initial: DebtForm, onDismiss: () -> Unit, onSave: (DebtForm) -> Unit) {
+internal fun DebtFormDialog(title: String, initial: DebtForm, onDismiss: () -> Unit, onSave: (DebtForm) -> Unit) {
     var f by remember { mutableStateOf(initial) }
     AlertDialog(
         onDismissRequest = onDismiss,

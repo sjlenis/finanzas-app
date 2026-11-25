@@ -380,6 +380,8 @@ class FinancialAssistant @Inject constructor(
             "• \"Le presté 50 mil a mi hermano\"\n" +
             "• \"¿Cuánto he gastado hoy?\" o \"¿Cuánto llevo este mes en transporte?\"\n" +
             "• \"¿Cuánto tengo en Nequi?\" o \"¿Cuáles son mis gastos más altos?\"\n" +
+            "• \"¿Puedo comprar un celular de 1.200.000?\" o \"Dame consejos\"\n" +
+            "• Con el botón de la cámara registras deudas, pagos o facturas desde una foto.\n" +
             "Siempre te muestro una tarjeta antes de guardar."
     }
 }
