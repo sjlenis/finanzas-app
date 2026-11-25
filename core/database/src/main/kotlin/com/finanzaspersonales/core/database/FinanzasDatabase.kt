@@ -21,6 +21,7 @@ import com.finanzaspersonales.core.database.entity.DebtPaymentEntity
 import com.finanzaspersonales.core.database.entity.GoalContributionEntity
 import com.finanzaspersonales.core.database.entity.ObligationEntity
 import com.finanzaspersonales.core.database.entity.ObligationPaymentEntity
+import com.finanzaspersonales.core.database.entity.ObligationPartialEntity
 import com.finanzaspersonales.core.database.entity.SavingsGoalEntity
 import com.finanzaspersonales.core.database.entity.TransactionEntity
 import com.finanzaspersonales.core.database.entity.TransferEntity
@@ -52,10 +53,11 @@ import com.finanzaspersonales.core.database.entity.TransferEntity
         BudgetEntity::class,
         ObligationEntity::class,
         ObligationPaymentEntity::class,
+        ObligationPartialEntity::class,
     ],
-    version = 5,
+    version = 6,
     exportSchema = true,
-    autoMigrations = [AutoMigration(from = 3, to = 4), AutoMigration(from = 4, to = 5)],
+    autoMigrations = [AutoMigration(from = 3, to = 4), AutoMigration(from = 4, to = 5), AutoMigration(from = 5, to = 6)],
 )
 @TypeConverters(Converters::class)
 abstract class FinanzasDatabase : RoomDatabase() {

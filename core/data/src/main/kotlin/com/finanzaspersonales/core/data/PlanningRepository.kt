@@ -11,6 +11,7 @@ import com.finanzaspersonales.core.database.entity.DebtPaymentEntity
 import com.finanzaspersonales.core.database.entity.GoalContributionEntity
 import com.finanzaspersonales.core.database.entity.ObligationEntity
 import com.finanzaspersonales.core.database.entity.ObligationPaymentEntity
+import com.finanzaspersonales.core.database.entity.ObligationPartialEntity
 import com.finanzaspersonales.core.database.entity.SavingsGoalEntity
 import com.finanzaspersonales.core.database.entity.TransactionEntity
 import com.finanzaspersonales.core.model.Money
@@ -248,6 +249,19 @@ class PlanningRepository @Inject constructor(
         audit("goal", goalId, if (amount.isNegative) "withdraw" else "contribute", amount.formatCop(), now)
     }
 
+    /**
+     * Deja la meta o el fondo en $0. Se guarda como un retiro por el total, así el historial
+     * conserva lo que pasó. No toca los saldos de las cuentas: el dinero nunca salió de ellas.
+     */
+    suspend fun emptyGoal(goalId: Long) = db.withTransaction {
+        val saved = Money(dao.savedIn(goalId))
+        if (saved.centavos <= 0) return@withTransaction
+        val now = clock.millis()
+        dao.insertContribution(GoalContributionEntity(goalId = goalId, amountCentavos = -saved.centavos, note = "Vaciado", createdAtEpochMs = now))
+        refreshGoalStatus(goalId)
+        audit("goal", goalId, "empty", saved.formatCop(), now)
+    }
+
     private suspend fun refreshGoalStatus(goalId: Long) {
         val goal = dao.getGoal(goalId) ?: return
         if (goal.isEmergencyFund || goal.status == GoalStatus.PAUSED.name) return
@@ -328,9 +342,11 @@ class PlanningRepository @Inject constructor(
         require(paidAmount == null || paidAmount.centavos > 0) { "El valor pagado debe ser mayor que cero" }
         val usd = o.currency == PayCurrency.USD.name
         require(!(usd && accountId != null && paidAmount == null)) { "Escribe cuánto te cobraron en pesos" }
-        val cop = paidAmount?.centavos ?: if (usd) null else o.amountCentavos
+        // Si ya hubo abonos este mes, solo falta el resto.
+        val partial = dao.partialSum(obligationId, month.toString())
+        val cop = paidAmount?.centavos ?: if (usd) null else (o.amountCentavos - partial).coerceAtLeast(0)
         val now = clock.millis()
-        val txId = accountId?.let {
+        val txId = accountId?.takeIf { cop == null || cop > 0 }?.let {
             db.transactionDao().insert(
                 TransactionEntity(
                     accountId = it,
@@ -346,11 +362,74 @@ class PlanningRepository @Inject constructor(
             )
         }
         dao.insertObligationPayment(
-            ObligationPaymentEntity(obligationId = obligationId, period = month.toString(), transactionId = txId, paidAtEpochMs = now, amountCentavos = cop),
+            ObligationPaymentEntity(
+                obligationId = obligationId, period = month.toString(), transactionId = txId, paidAtEpochMs = now,
+                amountCentavos = cop?.let { it + partial } ?: partial.takeIf { it > 0 },
+            ),
         )
     }
 
-    suspend fun unmarkObligationPaid(obligationId: Long, month: YearMonth) = dao.deleteObligationPayment(obligationId, month.toString())
+    /** Desmarca el mes y borra sus abonos parciales (los movimientos de las cuentas se conservan). */
+    suspend fun unmarkObligationPaid(obligationId: Long, month: YearMonth) = db.withTransaction {
+        dao.deleteObligationPayment(obligationId, month.toString())
+        dao.deleteObligationPartials(obligationId, month.toString())
+    }
+
+    /**
+     * Abono desde el calendario: registra el movimiento en [accountId] (si se elige) y lo
+     * suma como abono parcial del mes.
+     */
+    suspend fun payObligationPart(obligationId: Long, month: YearMonth, accountId: Long?, amount: Money): Money = db.withTransaction {
+        require(amount.centavos > 0) { "El valor debe ser mayor que cero" }
+        val o = requireNotNull(dao.getObligation(obligationId)) { "El pago fijo no existe" }
+        val now = clock.millis()
+        val txId = accountId?.let {
+            db.transactionDao().insert(
+                TransactionEntity(
+                    accountId = it,
+                    amountCentavos = if (o.isIncome) amount.centavos else -amount.centavos,
+                    kind = if (o.isIncome) TransactionKind.INCOME else TransactionKind.EXPENSE,
+                    categoryId = o.categoryId,
+                    description = o.name,
+                    occurredAtEpochMs = now,
+                    origin = TransactionOrigin.MANUAL,
+                    createdAtEpochMs = now,
+                    updatedAtEpochMs = now,
+                ),
+            )
+        }
+        addObligationPartial(obligationId, month, amount, txId)
+    }
+
+    /** Lo abonado en [month] a cada pago o ingreso fijo que aún no está completo. */
+    fun observeObligationPartials(month: YearMonth): Flow<Map<Long, Money>> =
+        dao.observeObligationPartials(month.toString()).map { list ->
+            list.groupBy { it.obligationId }.mapValues { (_, rows) -> Money(rows.sumOf { it.amountCentavos }) }
+        }
+
+    /**
+     * Abona [amount] a un pago o ingreso fijo en [month]. [transactionId] es el movimiento
+     * que ya se guardó en la cuenta (este abono no mueve dinero otra vez). Si con este abono
+     * se completa el valor, el mes queda marcado. Devuelve lo abonado en total.
+     */
+    suspend fun addObligationPartial(obligationId: Long, month: YearMonth, amount: Money, transactionId: Long?): Money = db.withTransaction {
+        require(amount.centavos > 0) { "El valor debe ser mayor que cero" }
+        val o = requireNotNull(dao.getObligation(obligationId)) { "El pago fijo no existe" }
+        require(o.currency == PayCurrency.COP.name) { "Los abonos parciales solo aplican a pagos en pesos" }
+        val period = month.toString()
+        val now = clock.millis()
+        dao.insertObligationPartial(
+            ObligationPartialEntity(obligationId = obligationId, period = period, amountCentavos = amount.centavos, transactionId = transactionId, createdAtEpochMs = now),
+        )
+        val total = dao.partialSum(obligationId, period)
+        if (total >= o.amountCentavos) {
+            dao.insertObligationPayment(
+                ObligationPaymentEntity(obligationId = obligationId, period = period, transactionId = transactionId, paidAtEpochMs = now, amountCentavos = total),
+            )
+        }
+        audit("obligation", obligationId, "partial", "${amount.formatCop()} -> ${Money(total).formatCop()}", now)
+        Money(total)
+    }
 
     // ================================================================= análisis
 

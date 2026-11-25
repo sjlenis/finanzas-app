@@ -14,6 +14,13 @@ enum class DraftKind(val label: String) {
     LOAN_RECEIVED("Préstamo que recibiste"),
     /** Retiro de cajero: transferencia de una cuenta bancaria a Efectivo. */
     WITHDRAWAL("Retiro a efectivo"),
+    /** Aporte al fondo de emergencia o a una meta: reserva dinero, no es un gasto. */
+    SAVING("Aporte al ahorro"),
+    /** Dinero que deja de estar apartado en el fondo o la meta. */
+    SAVING_WITHDRAWAL("Retiro del ahorro"),
+    ;
+
+    val isSaving: Boolean get() = this == SAVING || this == SAVING_WITHDRAWAL
 }
 
 /**
@@ -55,6 +62,12 @@ sealed interface ParseResult {
     data class Entry(val draft: EntryDraft) : ParseResult
     data class Query(val query: FinanceQuery) : ParseResult
     data object Help : ParseResult
+    /**
+     * Ahorro: "aparté 350.000 para el fondo de emergencia". No es un gasto: el dinero sigue
+     * en las cuentas y solo queda reservado. [emergency] true = fondo de emergencia; si no,
+     * [goalText] es el texto que nombra la meta (puede ser null). [withdraw] = sacar del ahorro.
+     */
+    data class Saving(val amount: Money?, val emergency: Boolean, val goalText: String?, val withdraw: Boolean) : ParseResult
     /** No se entendió; [hint] explica qué faltó. */
     data class NotUnderstood(val hint: String) : ParseResult
 }

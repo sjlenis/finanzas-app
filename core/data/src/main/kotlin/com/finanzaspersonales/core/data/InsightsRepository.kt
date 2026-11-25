@@ -94,7 +94,7 @@ class InsightsRepository @Inject constructor(
             budgetsOver = o.budgets.filter { it.status.level == BudgetLevel.OVER }.map { BudgetAlert(it.budget.categoryName, it.status.spent, it.status.limit) },
             budgetsNear = o.budgets.filter { it.status.level == BudgetLevel.NEAR }.map { BudgetAlert(it.budget.categoryName, it.status.spent, it.status.limit) },
             trends = trends,
-            upcoming = o.pending.map { UpcomingPayment(it.name, it.amount, it.date) },
+            upcoming = o.pending.map { UpcomingPayment(it.name, it.remaining, it.date) },
             ants = ants,
             unusual = unusual,
             recurringNotInCalendar = recurring.filter { SpendingPatterns.key(it.name) !in obligationKeys },

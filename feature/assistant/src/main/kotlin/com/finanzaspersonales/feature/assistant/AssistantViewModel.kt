@@ -125,7 +125,9 @@ class AssistantViewModel @Inject constructor(
             try {
                 val id = assistant.save(card, data.first())
                 chat.updateCard(messageId, stored.cardJson, CardStatus.SAVED.name, transactionId = id)
-                chat.add(ChatRole.ASSISTANT, assistant.savedText(card))
+                val extra = runCatching { assistant.applyObligation(card, id) }
+                    .getOrElse { "El movimiento se guardó, pero no pude abonarlo al pago fijo: ${it.message}" }
+                chat.add(ChatRole.ASSISTANT, assistant.savedText(card) + (extra?.let { " $it" } ?: ""))
             } catch (e: Exception) {
                 chat.add(ChatRole.ASSISTANT, "No se guardó: ${e.message ?: "error desconocido"}. Puedes editar la tarjeta y volver a intentarlo.")
             } finally {
@@ -144,6 +146,17 @@ class AssistantViewModel @Inject constructor(
         }
     }
 
+    /** "No abonar": el movimiento se guarda suelto, sin tocar el pago fijo. */
+    fun detachObligation(messageId: Long) = viewModelScope.launch {
+        mutex.withLock {
+            val stored = chat.get(messageId) ?: return@withLock
+            val status = CardStatus.from(stored.cardStatus)
+            if (status != CardStatus.PENDING && status != CardStatus.AWAITING_AMOUNT) return@withLock
+            val card = stored.cardJson?.let(DraftCard::fromJson) ?: return@withLock
+            chat.updateCard(messageId, card.copy(obligationId = null, obligationName = null, obligationRemaining = null).toJson(), stored.cardStatus)
+        }
+    }
+
     fun startEdit(messageId: Long) { editingId.value = messageId }
 
     fun dismissEdit() { editingId.value = null }
@@ -154,7 +167,11 @@ class AssistantViewModel @Inject constructor(
             val status = CardStatus.from(stored.cardStatus)
             if (status != CardStatus.PENDING && status != CardStatus.AWAITING_AMOUNT) return@withLock
             val newStatus = if (card.amount == null) CardStatus.AWAITING_AMOUNT else CardStatus.PENDING
-            chat.updateCard(messageId, card.toJson(), newStatus.name)
+            val before = stored.cardJson?.let(DraftCard::fromJson)
+            val kept = if (before != null && before.kind == card.kind && card.obligationId == null) {
+                card.copy(obligationId = before.obligationId, obligationName = before.obligationName, obligationRemaining = before.obligationRemaining)
+            } else card
+            chat.updateCard(messageId, kept.toJson(), newStatus.name)
             if (makeDefault) card.accountId?.let { preferences.setDefaultAccountId(it) }
             editingId.value = null
         }

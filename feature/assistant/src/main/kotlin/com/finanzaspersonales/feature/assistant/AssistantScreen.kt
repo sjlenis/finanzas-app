@@ -24,6 +24,7 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.Send
 import androidx.compose.material.icons.outlined.CheckCircle
 import androidx.compose.material.icons.outlined.DeleteSweep
+import androidx.compose.material.icons.outlined.PhotoCamera
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.AssistChip
 import androidx.compose.material3.Button
@@ -73,7 +74,7 @@ private val quickActions = listOf(
 )
 
 @Composable
-fun AssistantRoute(viewModel: AssistantViewModel = hiltViewModel()) {
+fun AssistantRoute(onScanPhoto: () -> Unit = {}, viewModel: AssistantViewModel = hiltViewModel()) {
     val state by viewModel.state.collectAsStateWithLifecycle()
     AssistantScreen(
         state = state,
@@ -83,6 +84,8 @@ fun AssistantRoute(viewModel: AssistantViewModel = hiltViewModel()) {
         onEdit = viewModel::startEdit,
         onDefaultAccount = { viewModel.setDefaultAccount(it) },
         onClearHistory = { viewModel.clearHistory() },
+        onScanPhoto = onScanPhoto,
+        onDetachObligation = { viewModel.detachObligation(it) },
     )
     state.editing?.let { item ->
         EditCardDialog(
@@ -103,6 +106,8 @@ fun AssistantScreen(
     onEdit: (Long) -> Unit,
     onDefaultAccount: (Long) -> Unit,
     onClearHistory: () -> Unit,
+    onScanPhoto: () -> Unit = {},
+    onDetachObligation: (Long) -> Unit = {},
 ) {
     var input by remember { mutableStateOf(TextFieldValue("")) }
     var confirmClear by rememberSaveable { mutableStateOf(false) }
@@ -131,6 +136,9 @@ fun AssistantScreen(
                 onSelect = onDefaultAccount,
                 modifier = Modifier.weight(1f),
             )
+            IconButton(onClick = onScanPhoto) {
+                Icon(Icons.Outlined.PhotoCamera, contentDescription = "Registrar desde una foto")
+            }
             IconButton(onClick = { confirmClear = true }, enabled = state.messages.isNotEmpty()) {
                 Icon(Icons.Outlined.DeleteSweep, contentDescription = "Borrar historial del chat")
             }
@@ -157,6 +165,7 @@ fun AssistantScreen(
                             onConfirm = { onConfirm(message.id) },
                             onEdit = { onEdit(message.id) },
                             onCancel = { onCancel(message.id) },
+                            onDetachObligation = { onDetachObligation(message.id) },
                         )
                     }
                 }
@@ -250,6 +259,7 @@ private fun ConfirmationCard(
     onConfirm: () -> Unit,
     onEdit: () -> Unit,
     onCancel: () -> Unit,
+    onDetachObligation: () -> Unit = {},
 ) {
     val open = status == CardStatus.PENDING || status == CardStatus.AWAITING_AMOUNT
     ElevatedCard(Modifier.fillMaxWidth().padding(end = 24.dp)) {
@@ -263,13 +273,30 @@ private fun ConfirmationCard(
                 highlight = card.amount == null,
             )
             Field("Fecha", if (card.date == today) "Hoy, ${formatShortDate(card.date)}" else formatShortDate(card.date))
-            if (card.kind == DraftKind.WITHDRAWAL) {
+            if (card.kind.isSaving) {
+                Field(if (card.kind == DraftKind.SAVING) "Hacia" else "Desde", card.goalName ?: "Sin meta")
+            } else if (card.kind == DraftKind.WITHDRAWAL) {
                 Field("Desde", accountLabel(card))
                 Field("Hacia", card.toAccountName ?: "Sin cuenta de efectivo")
             } else {
                 Field("Cuenta", accountLabel(card))
             }
             card.counterparty?.let { Field("Persona", it) }
+            card.obligationName?.let { name ->
+                Field("Abona a", name)
+                card.obligationRemaining?.let { Field("Faltaba", it.formatCop()) }
+                if (open) {
+                    TextButton(onClick = onDetachObligation, enabled = enabled) { Text("No abonar a $name") }
+                }
+            }
+            if (card.kind.isSaving) {
+                Text(
+                    "No es un gasto: el dinero sigue en tus cuentas y solo " +
+                        (if (card.kind == DraftKind.SAVING) "queda apartado." else "deja de estar apartado."),
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+            }
             if (card.kind == DraftKind.LOAN_GIVEN || card.kind == DraftKind.LOAN_RECEIVED || card.kind == DraftKind.WITHDRAWAL) {
                 Text(
                     "No cuenta como ingreso ni como gasto.",
@@ -296,7 +323,9 @@ private fun ConfirmationCard(
                         }
                     }
                     Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                        OutlinedButton(onClick = onEdit, enabled = enabled, modifier = Modifier.weight(1f)) { Text("Editar") }
+                        if (!card.kind.isSaving) {
+                            OutlinedButton(onClick = onEdit, enabled = enabled, modifier = Modifier.weight(1f)) { Text("Editar") }
+                        }
                         TextButton(onClick = onCancel, enabled = enabled, modifier = Modifier.weight(1f)) { Text("Cancelar") }
                     }
                 }

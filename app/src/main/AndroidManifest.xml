@@ -3,7 +3,15 @@
   Sin permiso de Internet: la app funciona 100 % local. Si una función opcional futura
   lo necesita, se añadirá de forma explícita y con tu autorización.
 -->
-<manifest xmlns:android="http://schemas.android.com/apk/res/android">
+<manifest xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:tools="http://schemas.android.com/tools">
+
+    <!--
+      ML Kit (lector de texto de fotos) trae permisos de red para enviar estadísticas de
+      uso a Google. Se quitan: el modelo va dentro de la app y nada sale del teléfono.
+    -->
+    <uses-permission android:name="android.permission.INTERNET" tools:node="remove" />
+    <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE" tools:node="remove" />
 
     <application
         android:name=".FinanzasApplication"
@@ -39,5 +47,16 @@
                 <action android:name="android.service.notification.NotificationListenerService" />
             </intent-filter>
         </service>
+
+        <!-- Fotos tomadas con la cámara para leerlas: se guardan en caché y se borran al leerlas. -->
+        <provider
+            android:name="androidx.core.content.FileProvider"
+            android:authorities="${applicationId}.fotos"
+            android:exported="false"
+            android:grantUriPermissions="true">
+            <meta-data
+                android:name="android.support.FILE_PROVIDER_PATHS"
+                android:resource="@xml/file_paths" />
+        </provider>
     </application>
 </manifest>

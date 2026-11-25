@@ -67,7 +67,7 @@ internal fun EditCardDialog(
                 ChoiceField(
                     label = "Tipo",
                     selected = kind,
-                    choices = DraftKind.entries.map { Choice(it, it.label) },
+                    choices = DraftKind.entries.filterNot { it.isSaving }.map { Choice(it, it.label) },
                     onSelect = { new ->
                         if (FinancialAssistant.classFor(new) != FinancialAssistant.classFor(kind)) {
                             categoryId = if (new == DraftKind.LOAN_GIVEN || new == DraftKind.LOAN_RECEIVED) {

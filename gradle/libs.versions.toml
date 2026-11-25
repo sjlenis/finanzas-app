@@ -25,6 +25,8 @@ androidxTest = "1.7.0"
 androidxTestExt = "1.3.0"
 
 [libraries]
+# Lectura de texto en fotos, en el teléfono y sin internet (modelo latino incluido en el APK).
+mlkit-text-recognition = { module = "com.google.mlkit:text-recognition", version = "16.0.1" }
 androidx-core-ktx = { module = "androidx.core:core-ktx", version.ref = "coreKtx" }
 androidx-activity-compose = { module = "androidx.activity:activity-compose", version.ref = "activity" }
 androidx-lifecycle-runtime-compose = { module = "androidx.lifecycle:lifecycle-runtime-compose", version.ref = "lifecycle" }

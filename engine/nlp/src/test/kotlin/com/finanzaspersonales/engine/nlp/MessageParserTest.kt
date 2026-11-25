@@ -212,4 +212,34 @@ class MessageParserTest {
         assertEquals(FinanceQuery.Spent(com.finanzaspersonales.core.common.Period.MONTH, null), query("¿Cuánto llevo este mes?"))
 
     @Test fun compraSinPreposicion() = assertEquals("Mercado", entry("Compré un mercado").description)
+
+    // --- Ahorro: no es un gasto ---------------------------------------------------
+
+    private fun saving(msg: String): ParseResult.Saving {
+        val r = parser.parse(msg, context)
+        assertTrue("'$msg' debería ser un ahorro, fue $r", r is ParseResult.Saving)
+        return r as ParseResult.Saving
+    }
+
+    @Test fun aporteAlFondoNoEsGasto() = with(saving("Aparté 350.000 para el fondo de emergencia")) {
+        assertEquals(Money.ofPesos(350_000), amount)
+        assertTrue(emergency)
+        assertTrue(!withdraw)
+    }
+
+    @Test fun ahorroParaUnaMeta() = with(saving("ahorré 50 mil para la moto")) {
+        assertEquals(Money.ofPesos(50_000), amount)
+        assertTrue(!emergency)
+        assertEquals("moto", goalText)
+    }
+
+    @Test fun sacarDelFondo() = with(saving("saqué 100.000 del fondo de emergencia")) {
+        assertTrue(withdraw)
+        assertTrue(emergency)
+    }
+
+    @Test fun gastoEnUnaEmergenciaSigueSiendoGasto() {
+        assertEquals(DraftKind.EXPENSE, entry("Gasté 300.000 en una emergencia médica").kind)
+        assertEquals(DraftKind.WITHDRAWAL, entry("Retiré 200 mil del cajero").kind)
+    }
 }

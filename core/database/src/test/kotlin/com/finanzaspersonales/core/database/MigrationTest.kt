@@ -53,6 +53,8 @@ class MigrationTest {
     private fun downgradeTo(version: Int) {
         open().apply { openHelper.writableDatabase; close() }
         SQLiteDatabase.openDatabase(context.getDatabasePath(name).path, null, SQLiteDatabase.OPEN_READWRITE).use { raw ->
+            if (version < 6) raw.execSQL("DROP TABLE obligation_partials")
+            if (version == 5) { raw.version = 5; return@use }
             if (version >= 4) {
                 // Tablas que cambiaron en la versión 5, tal como eran en la 4.
                 v5Changed.forEach { (table, sql) -> raw.execSQL("DROP TABLE $table"); sql.forEach(raw::execSQL) }
@@ -153,6 +155,28 @@ class MigrationTest {
         try {
             (1..5).forEach { db.chatDao().insert(ChatMessageEntity(role = "user", text = "m$it", createdAtEpochMs = it.toLong())) }
             assertEquals(listOf("m3", "m4", "m5"), db.chatDao().observeLatest(3).first().map { it.text })
+        } finally {
+            db.close()
+        }
+    }
+
+    @Test
+    fun migrarDe5a6CreaLosAbonosParciales() = runTest {
+        downgradeTo(5)
+        val db = open()
+        try {
+            val id = db.planningDao().insertObligation(
+                com.finanzaspersonales.core.database.entity.ObligationEntity(
+                    name = "Ingreso", amountCentavos = 1000, dayOfMonth = 30, isIncome = true, categoryId = null,
+                    accountId = null, active = true, createdAtEpochMs = 1L,
+                ),
+            )
+            db.planningDao().insertObligationPartial(
+                com.finanzaspersonales.core.database.entity.ObligationPartialEntity(
+                    obligationId = id, period = "2026-11", amountCentavos = 400, transactionId = null, createdAtEpochMs = 1L,
+                ),
+            )
+            assertEquals(400L, db.planningDao().partialSum(id, "2026-11"))
         } finally {
             db.close()
         }

@@ -38,8 +38,16 @@ data class DraftCard(
     val toAccountId: Long? = null,
     val toAccountName: String? = null,
     val counterparty: String? = null,
+    /** Solo para ahorro: el fondo de emergencia o la meta. */
+    val goalId: Long? = null,
+    val goalName: String? = null,
+    /** Pago o ingreso fijo del calendario al que se abona este movimiento, si aplica. */
+    val obligationId: Long? = null,
+    val obligationName: String? = null,
+    /** Lo que faltaba de ese pago fijo cuando se hizo la tarjeta. */
+    val obligationRemaining: Money? = null,
 ) {
-    val usesCategory: Boolean get() = kind != DraftKind.WITHDRAWAL
+    val usesCategory: Boolean get() = kind != DraftKind.WITHDRAWAL && !kind.isSaving
 
     fun toJson(): String = JSONObject().apply {
         put("v", 1)
@@ -55,6 +63,11 @@ data class DraftCard(
         toAccountId?.let { put("toAccountId", it) }
         toAccountName?.let { put("toAccountName", it) }
         counterparty?.let { put("counterparty", it) }
+        goalId?.let { put("goalId", it) }
+        goalName?.let { put("goalName", it) }
+        obligationId?.let { put("obligationId", it) }
+        obligationName?.let { put("obligationName", it) }
+        obligationRemaining?.let { put("obligationRemaining", it.centavos) }
     }.toString()
 
     companion object {
@@ -74,6 +87,11 @@ data class DraftCard(
                 toAccountId = if (o.has("toAccountId")) o.getLong("toAccountId") else null,
                 toAccountName = o.optString("toAccountName").ifEmpty { null },
                 counterparty = o.optString("counterparty").ifEmpty { null },
+                goalId = if (o.has("goalId")) o.getLong("goalId") else null,
+                goalName = o.optString("goalName").ifEmpty { null },
+                obligationId = if (o.has("obligationId")) o.getLong("obligationId") else null,
+                obligationName = o.optString("obligationName").ifEmpty { null },
+                obligationRemaining = if (o.has("obligationRemaining")) Money(o.getLong("obligationRemaining")) else null,
             )
         }.getOrNull()
     }

@@ -12,6 +12,7 @@ import com.finanzaspersonales.core.database.entity.DebtPaymentEntity
 import com.finanzaspersonales.core.database.entity.GoalContributionEntity
 import com.finanzaspersonales.core.database.entity.ObligationEntity
 import com.finanzaspersonales.core.database.entity.ObligationPaymentEntity
+import com.finanzaspersonales.core.database.entity.ObligationPartialEntity
 import com.finanzaspersonales.core.database.entity.SavingsGoalEntity
 import kotlinx.coroutines.flow.Flow
 
@@ -104,6 +105,12 @@ interface PlanningDao {
     @Insert(onConflict = androidx.room.OnConflictStrategy.IGNORE) suspend fun insertObligationPayment(payment: ObligationPaymentEntity): Long
     @Query("DELETE FROM obligation_payments WHERE obligation_id = :obligationId AND period = :period")
     suspend fun deleteObligationPayment(obligationId: Long, period: String)
+    @Insert suspend fun insertObligationPartial(partial: ObligationPartialEntity): Long
+    @Query("SELECT COALESCE(SUM(amount_centavos), 0) FROM obligation_partials WHERE obligation_id = :obligationId AND period = :period")
+    suspend fun partialSum(obligationId: Long, period: String): Long
+    @Query("SELECT * FROM obligation_partials WHERE period = :period") fun observeObligationPartials(period: String): Flow<List<ObligationPartialEntity>>
+    @Query("DELETE FROM obligation_partials WHERE obligation_id = :obligationId AND period = :period")
+    suspend fun deleteObligationPartials(obligationId: Long, period: String)
 
     // ---------------------------------------------------------------- historial para cálculos
     /**

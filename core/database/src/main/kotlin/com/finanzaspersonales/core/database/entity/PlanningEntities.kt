@@ -139,3 +139,22 @@ data class ObligationPaymentEntity(
     /** Valor real pagado en pesos (útil para cobros en dólares). Versión 5. */
     @ColumnInfo(name = "amount_centavos") val amountCentavos: Long? = null,
 )
+
+/**
+ * Abono parcial a un pago o ingreso fijo en un mes ("me llegaron 150.000 de los 300.000").
+ * Cuando la suma de abonos alcanza el valor, el mes queda marcado como pagado/recibido.
+ * Versión 6.
+ */
+@Entity(
+    tableName = "obligation_partials",
+    foreignKeys = [ForeignKey(entity = ObligationEntity::class, parentColumns = ["id"], childColumns = ["obligation_id"], onDelete = ForeignKey.CASCADE)],
+    indices = [Index(value = ["obligation_id", "period"])],
+)
+data class ObligationPartialEntity(
+    @PrimaryKey(autoGenerate = true) val id: Long = 0,
+    @ColumnInfo(name = "obligation_id") val obligationId: Long,
+    val period: String,
+    @ColumnInfo(name = "amount_centavos") val amountCentavos: Long,
+    @ColumnInfo(name = "transaction_id") val transactionId: Long?,
+    @ColumnInfo(name = "created_at") val createdAtEpochMs: Long,
+)

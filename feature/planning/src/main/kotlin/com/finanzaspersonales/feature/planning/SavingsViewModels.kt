@@ -122,4 +122,10 @@ class EmergencyFundViewModel @Inject constructor(private val planning: PlanningR
             planning.contribute(planning.emergencyFundId(), if (withdraw) -amount else amount, null)
         }.onSuccess { onDone() }.onFailure { _message.value = it.message }
     }
+
+    /** Pone el fondo en $0 sin tocar las cuentas. */
+    fun empty(onDone: () -> Unit) = viewModelScope.launch {
+        runCatching { planning.emptyGoal(planning.emergencyFundId()) }
+            .onSuccess { onDone() }.onFailure { _message.value = it.message }
+    }
 }

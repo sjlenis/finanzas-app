@@ -62,7 +62,8 @@ class FinancialAssistant @Inject constructor(
             categoryNames = data.categories.map { it.name },
         )
         return when (val result = parser.parse(message, context)) {
-            is ParseResult.Entry -> proposal(result.draft, data)
+            is ParseResult.Entry -> proposal(result.draft, data, message)
+            is ParseResult.Saving -> savingProposal(result)
             is ParseResult.Query -> AssistantReply(answer(result.query, data))
             ParseResult.Help -> AssistantReply(HELP)
             is ParseResult.NotUnderstood -> AssistantReply(result.hint)
@@ -74,8 +75,8 @@ class FinancialAssistant @Inject constructor(
 
     // ------------------------------------------------------------------ registros
 
-    private fun proposal(draft: EntryDraft, data: AssistantData): AssistantReply {
-        val card = resolve(draft, data)
+    private suspend fun proposal(draft: EntryDraft, data: AssistantData, message: String): AssistantReply {
+        val card = withObligation(resolve(draft, data), message)
         if (card.accountId == null) {
             return AssistantReply(
                 if (card.kind == DraftKind.WITHDRAWAL) "Para registrar un retiro necesito una cuenta bancaria activa y una de efectivo."
@@ -85,9 +86,106 @@ class FinancialAssistant @Inject constructor(
         return if (card.amount == null) {
             AssistantReply("¿Cuánto fue? Escríbeme solo el valor, por ejemplo 15.000.", card, CardStatus.AWAITING_AMOUNT)
         } else {
-            AssistantReply("Esto es lo que entendí. Revísalo antes de guardar:", card, CardStatus.PENDING)
+            val intro = card.obligationName?.let { name ->
+                "Esto es lo que entendí. Parece parte de tu ${if (card.kind == DraftKind.INCOME) "ingreso" else "pago"} fijo \"$name\", " +
+                    "así que lo abono ahí. Si no es así, toca \"No abonar\":"
+            } ?: "Esto es lo que entendí. Revísalo antes de guardar:"
+            AssistantReply(intro, card, CardStatus.PENDING)
         }
     }
+
+    /**
+     * Si el ingreso o gasto parece ser (parte de) un pago o ingreso fijo del calendario que
+     * aún no está completo este mes, lo propone en la tarjeta. Busca el nombre del pago
+     * fijo en el mensaje ("me llegaron 150 mil del transporte" -> "Transporte 2ª quincena").
+     */
+    suspend fun withObligation(card: DraftCard, message: String): DraftCard {
+        if (card.kind != DraftKind.INCOME && card.kind != DraftKind.EXPENSE) return card
+        val wantIncome = card.kind == DraftKind.INCOME
+        val overview = overview.observe().first()
+        val pendingIds = overview.monthItems
+            .filter { !it.paid && it.usdAmount == null && it.type == (if (wantIncome) com.finanzaspersonales.core.data.UpcomingType.INCOME else com.finanzaspersonales.core.data.UpcomingType.OBLIGATION) }
+            .associateBy { it.id }
+        if (pendingIds.isEmpty()) return card
+        val text = plain(message + " " + card.description)
+        val words = Regex("[a-z0-9]+").findAll(text).map { it.value }.toSet()
+        val candidates = planning.observeObligations().first().filter { o ->
+            o.id in pendingIds && plain(o.name).split(Regex("[^a-z0-9]+")).any { w -> w.length >= 4 && w !in GENERIC_WORDS && w in words }
+        }
+        val pick = candidates.minByOrNull { o ->
+            val date = pendingIds.getValue(o.id).date
+            // Primero el más próximo que aún no pasó; si todos pasaron, el más antiguo.
+            if (date.isBefore(today())) date.toEpochDay() + 100_000 else date.toEpochDay()
+        } ?: return card
+        val item = pendingIds.getValue(pick.id)
+        return card.copy(obligationId = pick.id, obligationName = pick.name, obligationRemaining = item.remaining)
+    }
+
+    /** Después de guardar: abona el movimiento al pago fijo y dice cuánto falta. */
+    suspend fun applyObligation(card: DraftCard, transactionId: Long?): String? {
+        val id = card.obligationId ?: return null
+        val amount = card.amount ?: return null
+        val month = java.time.YearMonth.from(today())
+        val total = planning.addObligationPartial(id, month, amount, transactionId)
+        val obligation = planning.observeObligations().first().firstOrNull { it.id == id } ?: return null
+        val missing = obligation.amount - total
+        return if (missing.centavos <= 0) {
+            "Con esto ${obligation.name} queda ${if (obligation.isIncome) "recibido" else "pagado"} completo este mes."
+        } else {
+            "Abonado a ${obligation.name}: llevas ${total.formatCop()} de ${obligation.amount.formatCop()}, faltan ${missing.formatCop()}."
+        }
+    }
+
+    /**
+     * "Aparté 350.000 para el fondo de emergencia": se propone un aporte al ahorro, no un gasto.
+     * El dinero sigue en las cuentas; el aporte solo lo reserva.
+     */
+    private suspend fun savingProposal(saving: ParseResult.Saving): AssistantReply {
+        val goals = planning.observeGoals().first()
+        val goal = if (saving.emergency) {
+            val id = planning.emergencyFundId()
+            planning.observeGoals().first().firstOrNull { it.id == id }
+        } else {
+            val wanted = saving.goalText?.let(::plain)
+            goals.filter { !it.isEmergencyFund }.firstOrNull { g ->
+                wanted != null && (plain(g.name).contains(wanted) || wanted.contains(plain(g.name)))
+            }
+        }
+        if (goal == null) {
+            val names = goals.filter { !it.isEmergencyFund }.map { it.name }
+            return AssistantReply(
+                "Eso suena a un ahorro, y un ahorro no es un gasto, así que no lo registré como gasto. " +
+                    "Dime a dónde va, por ejemplo \"Aparté 50.000 para el fondo de emergencia\"" +
+                    (if (names.isNotEmpty()) " o \"Ahorré 50.000 para ${names.first()}\". Tus metas: ${names.joinToString(", ")}." else ". Para otras metas, créalas en Perfil > Metas de ahorro."),
+            )
+        }
+        val kind = if (saving.withdraw) DraftKind.SAVING_WITHDRAWAL else DraftKind.SAVING
+        val card = DraftCard(
+            kind = kind,
+            amount = saving.amount,
+            categoryId = null,
+            categoryName = null,
+            description = if (saving.withdraw) "Retiro de ${goal.name}" else "Aporte a ${goal.name}",
+            date = today(),
+            accountId = null,
+            accountName = null,
+            accountIsDefault = false,
+            goalId = goal.id,
+            goalName = goal.name,
+        )
+        return if (card.amount == null) {
+            AssistantReply("¿Cuánto quieres ${if (saving.withdraw) "sacar de" else "apartar en"} ${goal.name}? Escríbeme solo el valor.", card, CardStatus.AWAITING_AMOUNT)
+        } else {
+            AssistantReply(
+                "Lo registro como ahorro, no como gasto: tus cuentas no cambian y en Inicio se descuenta del dinero disponible. Revísalo:",
+                card,
+                CardStatus.PENDING,
+            )
+        }
+    }
+
+    private fun plain(text: String): String =
+        java.text.Normalizer.normalize(text.lowercase(), java.text.Normalizer.Form.NFD).replace(Regex("\\p{M}+"), "").trim()
 
     fun resolve(draft: EntryDraft, data: AssistantData): DraftCard {
         val named = draft.accountName?.let { name -> data.accounts.firstOrNull { it.name.equals(name, ignoreCase = true) } }
@@ -136,9 +234,15 @@ class FinancialAssistant @Inject constructor(
     }
 
     /** Guarda una tarjeta confirmada. Devuelve el id del movimiento o lanza un error con un mensaje claro. */
-    suspend fun save(card: DraftCard, data: AssistantData): Long {
+    suspend fun save(card: DraftCard, data: AssistantData): Long? {
         val amount = requireNotNull(card.amount) { "Falta el valor" }
         require(amount.centavos > 0) { "El valor debe ser mayor que cero" }
+        if (card.kind.isSaving) {
+            val goalId = requireNotNull(card.goalId) { "No encontré la meta" }
+            requireNotNull(planning.observeGoals().first().firstOrNull { it.id == goalId }) { "La meta ya no existe" }
+            planning.contribute(goalId, if (card.kind == DraftKind.SAVING_WITHDRAWAL) -amount else amount, "Desde el asistente")
+            return null
+        }
         require(!card.date.isAfter(today())) { "La fecha no puede ser futura" }
         val account = requireNotNull(data.accounts.firstOrNull { it.id == card.accountId }) { "La cuenta ya no existe o está archivada" }
         val occurredAt = BogotaTime.instantForDate(card.date, clock)
@@ -164,6 +268,7 @@ class FinancialAssistant @Inject constructor(
                 occurredAt = occurredAt,
                 origin = TransactionOrigin.CHAT,
             )
+            DraftKind.SAVING, DraftKind.SAVING_WITHDRAWAL -> error("El ahorro se guarda arriba")
             DraftKind.WITHDRAWAL -> {
                 val cash = requireNotNull(data.accounts.firstOrNull { it.id == card.toAccountId }) { "No encontré la cuenta de efectivo" }
                 require(cash.id != account.id) { "La cuenta de origen debe ser distinta de la de efectivo" }
@@ -176,6 +281,10 @@ class FinancialAssistant @Inject constructor(
         val amount = card.amount?.formatCop().orEmpty()
         val whenText = if (card.date == today()) "hoy" else formatShortDate(card.date)
         return when (card.kind) {
+            DraftKind.SAVING -> "Guardado: apartaste $amount en ${card.goalName}. No es un gasto: tus cuentas siguen igual, " +
+                "pero ese dinero ya no se cuenta como disponible. Puedes verlo o vaciarlo en Perfil > Fondo de emergencia o Metas de ahorro."
+            DraftKind.SAVING_WITHDRAWAL -> "Guardado: $amount dejan de estar apartados en ${card.goalName} y vuelven a contar como disponibles. " +
+                "Si ese dinero lo gastaste, regístralo también como gasto."
             DraftKind.WITHDRAWAL -> "Guardado: retiro de $amount de ${card.accountName} a ${card.toAccountName}, $whenText."
             DraftKind.LOAN_GIVEN, DraftKind.LOAN_RECEIVED ->
                 "Guardado: ${card.kind.label.lowercase()} de $amount en ${card.accountName}, $whenText. " +
@@ -275,7 +384,7 @@ class FinancialAssistant @Inject constructor(
             append("Te quedan ${pending.size} ${if (pending.size == 1) "pago" else "pagos"} este mes por ${o.money.obligations.formatCop()}:")
             pending.forEach { p ->
                 val late = if (p.date.isBefore(o.today)) " (vencido)" else ""
-                append("\n• ${p.name}: ${p.amount.formatCop()} el ${formatShortDate(p.date)}$late")
+                append("\n• ${p.name}: ${p.remaining.formatCop()} el ${formatShortDate(p.date)}$late")
             }
         }
     }
@@ -366,20 +475,26 @@ class FinancialAssistant @Inject constructor(
             DraftKind.EXPENSE, DraftKind.FEE, DraftKind.REFUND -> CategoryClass.EXPENSE
             DraftKind.INCOME -> CategoryClass.INCOME
             DraftKind.LOAN_GIVEN, DraftKind.LOAN_RECEIVED -> CategoryClass.NEUTRAL
-            DraftKind.WITHDRAWAL -> null
+            DraftKind.WITHDRAWAL, DraftKind.SAVING, DraftKind.SAVING_WITHDRAWAL -> null
         }
 
         const val WELCOME = "Hola. Escríbeme tus gastos e ingresos como se los contarías a alguien, " +
             "por ejemplo \"Hoy gasté 15.000 en almuerzo\". Te muestro una tarjeta y solo guardo cuando confirmes. " +
             "Todo se procesa en tu teléfono."
 
+        /** Palabras que no sirven para reconocer un pago fijo por su nombre. */
+        private val GENERIC_WORDS = setOf("quincena", "pago", "pagos", "ingreso", "ingresos", "fijo", "mensual", "cuota", "primera", "segunda", "dolares", "pesos")
+
         const val HELP = "Puedo registrar y responder cosas como:\n" +
             "• \"Gasté 18 mil en almuerzo con Nequi\"\n" +
             "• \"Me pagaron 2.500.000 de salario\"\n" +
             "• \"Retiré 200 mil del cajero\"\n" +
             "• \"Le presté 50 mil a mi hermano\"\n" +
+            "• \"Aparté 100 mil para el fondo de emergencia\" (es ahorro, no gasto)\n" +
             "• \"¿Cuánto he gastado hoy?\" o \"¿Cuánto llevo este mes en transporte?\"\n" +
             "• \"¿Cuánto tengo en Nequi?\" o \"¿Cuáles son mis gastos más altos?\"\n" +
+            "• \"¿Puedo comprar un celular de 1.200.000?\" o \"Dame consejos\"\n" +
+            "• Con el botón de la cámara registras deudas, pagos o facturas desde una foto.\n" +
             "Siempre te muestro una tarjeta antes de guardar."
     }
 }
